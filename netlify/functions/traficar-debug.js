@@ -1,8 +1,9 @@
+// Returns the raw JSON from fioletowe.live so we can see the real field names.
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
   const zoneId = event.queryStringParameters?.zoneId || '1';
-  const last = event.queryStringParameters?.lastUpdate; // pass ?lastUpdate=0 if you want
-  const url = `${origin}/api/v1/cars?zoneId=${encodeURIComponent(zoneId)}${last ? `&lastUpdate=${encodeURIComponent(last)}` : ''}`;
+  const last = event.queryStringParameters?.lastUpdate || '0';
+  const url = `${origin}/api/v1/cars?zoneId=${encodeURIComponent(zoneId)}&lastUpdate=${encodeURIComponent(last)}`;
 
   const headers = {
     'accept': 'application/json',
