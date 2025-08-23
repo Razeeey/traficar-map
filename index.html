@@ -1,365 +1,280 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TrafiCar Live Map</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>TrafiCar — Live Cars</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <!-- MapLibre GL (free & smooth) -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css"/>
+  <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap">
-
   <style>
     :root{
-      --bg:#0f0f12; --panel:#17171c; --panel2:#1f1f26; --text:#f4f4f6; --muted:#a7a7b4;
-      --accent:#7b4bff; --accent2:#a07bff; --ok:#3ddc84; --shadow:0 10px 30px rgba(0,0,0,.35); --radius:20px;
+      --panel:#17171c; --panel2:#1f1f26; --text:#f5f6fa; --muted:#a7a7b4;
+      --accent:#7b4bff; --accent2:#a07bff; --radius:14px; --shadow:0 10px 30px rgba(0,0,0,.35);
     }
     *{box-sizing:border-box}
-    body{margin:0; background:linear-gradient(180deg,#0b0b0e,#141419); color:var(--text); font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
-    #map{position:fixed; inset:0}
-
+    body{margin:0;background:linear-gradient(180deg,#0b0b0e,#141419);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+    #map{position:fixed;inset:0}
     .topbar{
-      position:fixed; inset:16px 16px auto 16px; z-index:1000; display:flex; gap:12px; align-items:center; flex-wrap:wrap;
-      background:rgba(23,23,28,.75); backdrop-filter:saturate(1.2) blur(8px);
-      border:1px solid rgba(255,255,255,.06); border-radius:var(--radius); padding:10px 12px; box-shadow:var(--shadow);
+      position:fixed;inset:12px 12px auto 12px;z-index:10;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+      background:rgba(23,23,28,.82);backdrop-filter:saturate(1.2) blur(8px);border:1px solid rgba(255,255,255,.06);
+      border-radius:var(--radius);padding:8px 10px;box-shadow:var(--shadow)
     }
-    .brand{display:flex; align-items:center; gap:10px; font-weight:800; padding:8px 12px; background:linear-gradient(135deg,var(--accent),var(--accent2)); border-radius:14px; color:white}
-    .pill, select, button, .toggle{background:var(--panel2); color:var(--text); border:1px solid rgba(255,255,255,.06); padding:9px 12px; border-radius:14px; font-weight:600; cursor:pointer}
-    .pill:hover, select:hover, button:hover, .toggle:hover{ border-color:rgba(255,255,255,.14)}
-    .city{min-width:150px}
+    .brand{font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));padding:8px 12px;border-radius:12px}
+    select,button{background:var(--panel2);color:var(--text);border:1px solid rgba(255,255,255,.08);padding:9px 12px;border-radius:12px;font-weight:600;cursor:pointer}
+    select:hover,button:hover{border-color:rgba(255,255,255,.18)}
     .spacer{flex:1}
-
-    .panel{
-      position:fixed; right:16px; top:86px; z-index:999; width:360px; max-width:calc(100% - 32px);
-      background:rgba(23,23,28,.92); border:1px solid rgba(255,255,255,.06); border-radius:var(--radius);
-      padding:14px; box-shadow:var(--shadow); display:none;
-    }
-    .panel h3{margin:6px 0 10px}
-    .row{display:flex; gap:10px; margin-bottom:10px}
-    .row label{font-size:.9rem; color:var(--muted)}
-    .row input[type="range"]{width:100%}
-
-    .footer{
-      position:fixed; left:16px; bottom:16px; z-index:999; display:flex; gap:10px; align-items:center;
-      padding:8px 10px; background:rgba(23,23,28,.8); border:1px solid rgba(255,255,255,.06); border-radius:12px;
-      box-shadow:var(--shadow); font-size:.9rem; color:var(--muted)
-    }
-    .badge{background:var(--panel2); padding:4px 8px; border-radius:999px; font-weight:700}
-    .dot{width:10px; height:10px; border-radius:50%}
-    .dot.ok{background:var(--ok)} .dot.low{background:#ffb020} .dot.crit{background:#ff6b6b}
-    .spinner{display:inline-block; width:14px; height:14px; border:2px solid #ffffff30; border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-
-    .toggle{display:flex; align-items:center; gap:8px; user-select:none}
-    .toggle input{accent-color:#7b4bff}
+    .count{background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
+    .badge{background:#7b4bff;color:#fff;padding:4px 8px;border-radius:10px;font-weight:800;display:inline-block;min-width:46px;text-align:center}
+    .muted{color:var(--muted)}
+    .infocard{min-width:280px;max-width:320px}
   </style>
 </head>
 <body>
-  <div id="map" role="application" aria-label="Traficar cars map"></div>
+  <div id="map" aria-label="Traficar map"></div>
 
   <div class="topbar">
-    <div class="brand">🚗 TrafiCar Radar</div>
-
-    <select id="city" class="city" title="Select city">
-      <option value="krakow" selected>Kraków</option>
-      <option value="warszawa">Warszawa</option>
-      <option value="wroclaw">Wrocław</option>
-      <option value="poznan">Poznań</option>
-      <option value="trojmiasto">Trójmiasto</option>
-      <option value="slask">Śląsk</option>
-      <option value="lublin">Lublin</option>
-      <option value="lodz">Łódź</option>
-      <option value="szczecin">Szczecin</option>
-      <option value="rzeszow">Rzeszów</option>
-    </select>
-
-    <label class="toggle" title="Show only clearly available cars">
-      <input id="onlyAvail" type="checkbox" checked>
-      Available only
+    <div class="brand">🚗 TrafiCar</div>
+    <label>
+      <span class="muted" style="font-size:.85rem;margin-right:6px">City</span>
+      <select id="city">
+        <option value="krakow">Kraków</option>
+        <option value="warszawa">Warszawa</option>
+        <option value="wroclaw">Wrocław</option>
+        <option value="poznan">Poznań</option>
+        <option value="trojmiasto">Trójmiasto</option>
+        <option value="slask">Śląsk</option>
+        <option value="lublin">Lublin</option>
+        <option value="lodz">Łódź</option>
+        <option value="szczecin">Szczecin</option>
+        <option value="rzeszow">Rzeszów</option>
+      </select>
     </label>
 
-    <button id="filterBtn" class="pill">Filter ▾</button>
-    <button id="refreshBtn" class="pill">Refresh</button>
+    <label>
+      <span class="muted" style="font-size:.85rem;margin:0 6px 0 12px">Model</span>
+      <select id="model"><option value="">All</option></select>
+    </label>
+
+    <button id="refresh">Refresh</button>
     <div class="spacer"></div>
-    <button id="locateBtn" class="pill">📍 My location</button>
-    <button id="themeBtn" class="pill">🌓</button>
-  </div>
-
-  <div id="filterPanel" class="panel" aria-hidden="true">
-    <h3>Filters</h3>
-    <div class="row">
-      <label style="flex:1">
-        Model
-        <select id="modelSelect" style="width:100%">
-          <option value="">All models</option>
-        </select>
-      </label>
-    </div>
-    <div class="row">
-      <label style="flex:1">
-        Min fuel / charge: <span id="fuelVal">0%</span>
-        <input id="fuelRange" type="range" min="0" max="100" step="5" value="0">
-      </label>
-    </div>
-    <div class="row">
-      <label style="flex:1">
-        Radius from map center (<span id="radiusVal">0</span> m; 0 = off)
-        <input id="radiusRange" type="range" min="0" max="5000" step="100" value="0">
-      </label>
-    </div>
-    <div class="row" style="justify-content:flex-end;">
-      <button id="applyFilters" class="pill" style="background:linear-gradient(135deg,var(--accent),var(--accent2));color:white">Apply</button>
-    </div>
-  </div>
-
-  <div class="footer">
-    <span id="status"><span class="spinner"></span> Loading…</span>
-    <span class="badge" id="count">0 cars</span>
-    <div style="display:flex;gap:10px;align-items:center">
-      <span class="dot ok" title="≥ 50%"></span><span>OK</span>
-      <span class="dot low" title="20–49%"></span><span>Low</span>
-      <span class="dot crit" title="< 20%"></span><span>Critical</span>
-    </div>
-    <span>• Data: fioletowe.live API</span>
+    <div id="count" class="count">0 cars</div>
   </div>
 
   <script>
-  (() => {
-    // Helpers
-    const $ = id => document.getElementById(id);
-    const statusEl = () => $('status') || { textContent: '' };
-    function safe(fn){ try { return fn(); } catch(e){ console.error(e); statusEl().textContent = 'JS error: ' + e.message; } }
-    function color(p){ if(p>=50) return '#3ddc84'; if(p>=20) return '#ffb020'; return '#ff6b6b'; }
-    const toRad = x=>x*Math.PI/180, R=6371000;
-    const dist = (a,b)=>{ const dLat=toRad(b[0]-a[0]), dLon=toRad(b[1]-a[1]); const A=Math.sin(dLat/2)**2+Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2; return R*2*Math.atan2(Math.sqrt(A),Math.sqrt(1-A)); };
-    const km = m => (m/1000).toFixed(1);
+  (function(){
+    // 🔑 MapTiler free key
+    const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // <-- paste your key here
 
+    // API for cars (your Netlify function already city-filters & returns only available)
     const API = '/.netlify/functions/traficar-auto';
+
+    // City centers + default zooms
     const centers = {
-      krakow:[50.0614,19.9383], warszawa:[52.2297,21.0122], wroclaw:[51.1079,17.0385],
-      poznan:[52.4064,16.9252], trojmiasto:[54.3722,18.6383], slask:[50.2649,19.0238],
-      lublin:[51.2465,22.5684], lodz:[51.7592,19.4550], szczecin:[53.4285,14.5528], rzeszow:[50.0413,21.9990]
+      krakow:{lng:19.9383,lat:50.0614,z:13}, warszawa:{lng:21.0122,lat:52.2297,z:12},
+      wroclaw:{lng:17.0385,lat:51.1079,z:13}, poznan:{lng:16.9252,lat:52.4064,z:13},
+      trojmiasto:{lng:18.6383,lat:54.3722,z:11}, slask:{lng:19.0238,lat:50.2649,z:11},
+      lublin:{lng:22.5684,lat:51.2465,z:13}, lodz:{lng:19.4550,lat:51.7592,z:12},
+      szczecin:{lng:14.5528,lat:53.4285,z:12}, rzeszow:{lng:21.9990,lat:50.0413,z:13}
     };
 
-    // Map + state
-    let map, tiles, cluster, circle=null, myLoc=null;
-    let lastCity='krakow', onlyAvailable=true, timer=null, isLoading=false, justChangedCity=true;
-    let lastGoodData=[], currentData=[];
+    // Read ?city= from URL
+    const params = new URLSearchParams(location.search);
+    const initialCity = centers[params.get('city')] ? params.get('city') : 'krakow';
 
-    safe(() => {
-      map = L.map('map', { zoomControl:false }).setView(centers.krakow, 13);
-      L.control.zoom({position:'bottomright'}).addTo(map);
-      tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
-      cluster = L.markerClusterGroup({ showCoverageOnHover:false, disableClusteringAtZoom:17 });
-      map.addLayer(cluster);
+    const citySel = document.getElementById('city');
+    const modelSel = document.getElementById('model');
+    const refreshBtn = document.getElementById('refresh');
+    const countEl = document.getElementById('count');
+
+    citySel.value = initialCity;
+
+    let map, sourceReady=false, lastGood=[], isLoading=false, timer=null;
+
+    // Init map
+    map = new maplibregl.Map({
+      container: 'map',
+      style: `https://api.maptiler.com/maps/streets/style.json?key=${MAPTILER_KEY}`,
+      center: centers[initialCity],
+      zoom: centers[initialCity].z,
+      attributionControl: true
     });
+    map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
-    // UI refs
-    const city=$('city'), filterBtn=$('filterBtn'), panel=$('filterPanel'), refreshBtn=$('refreshBtn'), locateBtn=$('locateBtn'), themeBtn=$('themeBtn');
-    const modelSel=$('modelSelect'), fuel=$('fuelRange'), fuelVal=$('fuelVal'), radius=$('radiusRange'), radiusVal=$('radiusVal'), apply=$('applyFilters');
-    const onlyAvail=$('onlyAvail');
-    const count=$('count');
-    if (fuelVal && fuel) fuelVal.textContent = fuel.value + '%';
-    if (radiusVal && radius) radiusVal.textContent = radius.value;
-
-    // Panel close helpers
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && panel && panel.style.display === 'block') panel.style.display='none';
-    });
-    document.addEventListener('click', (e) => {
-      if (!panel) return;
-      const clickedInside = panel.contains(e.target) || filterBtn.contains(e.target);
-      if (!clickedInside && panel.style.display==='block') panel.style.display='none';
-    });
-
-    // Events
-    if (filterBtn && panel) filterBtn.onclick = () => { panel.style.display = (panel.style.display==='block'?'none':'block'); panel.setAttribute('aria-hidden', panel.style.display!=='block'); };
-    if (apply) apply.onclick = () => { if (panel) panel.style.display='none'; render(currentData, true); };
-    if (fuel && fuelVal) fuel.oninput = () => fuelVal.textContent = fuel.value + '%';
-    if (radius && radiusVal) radius.oninput = () => { radiusVal.textContent = radius.value; drawRadius(); render(currentData, true); };
-    if (city) city.onchange = () => {
-      lastCity = city.value;
-      justChangedCity = true;
-      safe(() => map.setView(centers[lastCity]||centers.krakow, 13));
-      load(lastCity);
-    };
-    if (onlyAvail) onlyAvail.onchange = () => { onlyAvailable = !!onlyAvail.checked; load(lastCity); };
-    if (refreshBtn) refreshBtn.onclick = () => load(lastCity);
-    if (locateBtn) locateBtn.onclick = () => {
-      if (!navigator.geolocation) return alert('Geolocation not supported');
-      navigator.geolocation.getCurrentPosition(p => {
-        myLoc = [p.coords.latitude, p.coords.longitude];
-        safe(() => map.setView(myLoc, 14));
-        drawRadius(); render(currentData, true);
-      }, () => alert('Could not get your location'));
-    };
-    if (themeBtn) themeBtn.onclick = () => {
-      safe(() => {
-        if (document.body.dataset.theme==='light'){ document.body.dataset.theme=''; tiles.setUrl('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'); }
-        else { document.body.dataset.theme='light'; tiles.setUrl('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'); }
+    map.on('load', () => {
+      // GeoJSON source with clustering
+      map.addSource('cars', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+        cluster: true, clusterRadius: 60, clusterMaxZoom: 14
       });
-    };
+      // Cluster circles
+      map.addLayer({
+        id:'clusters', type:'circle', source:'cars', filter:['has','point_count'],
+        paint:{
+          'circle-color':'#3e3e45',
+          'circle-stroke-color':'#111',
+          'circle-stroke-width':2,
+          'circle-radius':['step',['get','point_count'],16, 20, 20, 50, 26, 100, 32]
+        }
+      });
+      // Cluster counts
+      map.addLayer({
+        id:'cluster-count', type:'symbol', source:'cars', filter:['has','point_count'],
+        layout:{ 'text-field':['get','point_count_abbreviated'],'text-font':['Open Sans Semibold','Arial Unicode MS Bold'],'text-size':12 },
+        paint:{ 'text-color':'#fff' }
+      });
+      // Unclustered points: color by fuel %
+      map.addLayer({
+        id:'unclustered', type:'circle', source:'cars', filter:['!',['has','point_count']],
+        paint:{
+          'circle-color':[
+            'case',
+              ['!', ['has','pct']], '#8e8e93',
+              ['>=', ['get','pct'], 50], '#3ddc84',
+              ['>=', ['get','pct'], 20], '#ffb020',
+              '#ff6b6b'
+          ],
+          'circle-stroke-color':'#111',
+          'circle-stroke-width':2,
+          'circle-radius':8
+        }
+      });
 
-    function drawRadius(){
-      if (!radius) return;
-      const r = +radius.value;
-      if (circle){ map.removeLayer(circle); circle=null; }
-      if (r>0){ circle = L.circle(map.getCenter(), { radius:r, color:'#7b4bff', weight:1, fillOpacity:0.05 }); circle.addTo(map); }
-    }
+      // Interaction
+      map.on('click','clusters', async (e)=>{
+        const features = map.queryRenderedFeatures(e.point, { layers:['clusters'] });
+        const clusterId = features[0].properties.cluster_id;
+        map.getSource('cars').getClusterExpansionZoom(clusterId, (err, zoom)=>{
+          if (err) return;
+          map.easeTo({ center: features[0].geometry.coordinates, zoom });
+        });
+      });
 
-    // Build model dropdown from *last good* data
-    function buildModelOptions(data){
-      if (!modelSel) return;
-      const names = Array.from(new Set((data||[]).map(v => v.model).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pl'));
+      map.on('click','unclustered', (e)=>{
+        const v = e.features[0].properties;
+        const coords = e.features[0].geometry.coordinates.slice();
+        const badge = v.number ? v.number : (v.id ? String(v.id).slice(-4) : '');
+        const plate = v.plate || '';
+        const pct = (v.pct!=null) ? `${v.pct}%` : '—';
+        const range = (v.rangeKm!=null) ? ` (${v.rangeKm} km)` : '';
+        const addr = v.address || '';
+        const apple = `https://maps.apple.com/?ll=${coords[1]},${coords[0]}&q=${encodeURIComponent(v.model || 'Car')}`;
+
+        const html = `
+          <div class="infocard">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+              <span class="badge">${badge}</span>
+              <div style="font-weight:800">${v.model || 'Vehicle'}</div>
+            </div>
+            <div class="muted" style="margin:-2px 0 8px">${plate || '&nbsp;'}</div>
+            <div class="muted" style="margin:6px 0">⛽ <b>${pct}${range}</b></div>
+            <div class="muted" style="margin:6px 0">📍 ${addr}</div>
+            <div style="margin:8px 0"><a href="${apple}" target="_blank" rel="noopener">Open in Apple Maps</a></div>
+          </div>
+        `;
+        new maplibregl.Popup({ closeButton:true, offset:12 }).setLngLat(coords).setHTML(html).addTo(map);
+      });
+
+      map.on('mouseenter','unclustered', ()=> map.getCanvas().style.cursor='pointer');
+      map.on('mouseleave','unclustered', ()=> map.getCanvas().style.cursor='');
+
+      sourceReady = true;
+      load(); // first load
+    });
+
+    // UI events
+    citySel.addEventListener('change', ()=>{
+      const c = citySel.value;
+      const center = centers[c] || centers.krakow;
+      map.easeTo({ center, zoom:center.z });
+      const p = new URLSearchParams(location.search); p.set('city', c); history.replaceState(null,'',`?${p.toString()}`);
+      load();
+    });
+    modelSel.addEventListener('change', ()=> render(lastGood));
+    document.getElementById('refresh').addEventListener('click', ()=> load());
+
+    // Helpers
+    function setCount(n){ countEl.textContent = `${n} ${n===1?'car':'cars'}`; }
+    function buildModels(data){
+      const names = Array.from(new Set(data.map(v=>v.model).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pl'));
       const cur = modelSel.value;
-      modelSel.innerHTML = '<option value="">All models</option>' + names.map(n=>`<option>${n}</option>`).join('');
+      modelSel.innerHTML = '<option value="">All</option>' + names.map(n=>`<option>${n}</option>`).join('');
       if (names.includes(cur)) modelSel.value = cur;
     }
-
-    function qtyText(v){
-      if (v.pct==null || !v.maxFuel) return null;
-      const val = Math.round(v.maxFuel * (v.pct/100));
-      const unit = v.isElectric ? 'kWh' : 'L';
-      return `${val}/${v.maxFuel}${unit}`;
+    function toGeo(data){
+      return {
+        type:'FeatureCollection',
+        features: data.map(v => ({
+          type:'Feature',
+          geometry:{ type:'Point', coordinates:[Number(v.lng), Number(v.lat)] },
+          properties:{
+            id: v.id ?? null,
+            model: v.model ?? 'Vehicle',
+            plate: v.plate ?? '',
+            number: v.number ?? '',
+            pct: (typeof v.pct === 'number') ? v.pct : null,
+            rangeKm: (typeof v.rangeKm === 'number') ? v.rangeKm : null,
+            address: v.address || ''
+          }
+        }))
+      };
     }
 
-    const addrCache = new Map();
-    async function reverseGeocode(lat,lng){
-      const key = lat.toFixed(5)+','+lng.toFixed(5);
-      if (addrCache.has(key)) return addrCache.get(key);
-      try{
-        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
-        const r = await fetch(url, { headers: { 'Accept':'application/json' }});
-        const j = await r.json();
-        const s = j.address ? [
-          j.address.city || j.address.town || j.address.village || '',
-          j.address.road ? `ul. ${j.address.road}` : ''
-        ].filter(Boolean).join(', ') : (j.display_name || '');
-        addrCache.set(key, s);
-        return s;
-      }catch{ return ''; }
-    }
+    function render(data){
+      // cache & model list
+      if (Array.isArray(data) && data.length) lastGood = data.slice();
+      buildModels(lastGood);
 
-    function render(data, fromFilter=false){
-      currentData = Array.isArray(data) ? data : [];
-      if (!fromFilter) buildModelOptions(lastGoodData.length ? lastGoodData : currentData);
-
-      const center = myLoc || (centers[lastCity] || centers.krakow);
-      const r = radius ? +radius.value : 0;
-      const min = fuel ? +fuel.value : 0;
-      const m = modelSel ? modelSel.value.trim() : '';
-
-      // client-side filters & numeric coords
-      const filtered = currentData.filter(v => {
+      // model filter client-side
+      const mod = modelSel.value.trim();
+      const filtered = (lastGood.length ? lastGood : data).filter(v => {
         if (!v) return false;
         const lat = Number(v.lat), lng = Number(v.lng);
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-        if (m && v.model !== m) return false;
-        if (min && (v.pct==null || v.pct < min)) return false;
-        if (r>0){ const d = dist(center, [lat, lng]); if (d > r) return false; }
+        if (mod && v.model !== mod) return false;
         return true;
       });
 
-      safe(() => cluster.clearLayers());
-      let n=0;
-
-      for (const v of filtered){
-        const lat = Number(v.lat), lng = Number(v.lng);
-        const pctLabel = (v.pct==null ? '—' : (Math.round(v.pct)+'%'));
-        const qty = qtyText(v);
-        const range = (v.rangeKm!=null ? ` (${v.rangeKm} km)` : '');
-        const fuelKind = v.isElectric ? 'Bateria' : 'Paliwo';
-        const icon = L.divIcon({ className:'mk', html:`<div style="width:22px;height:22px;border-radius:50%;background:${color(v.pct??100)};border:2px solid #111;box-shadow:0 0 0 2px rgba(0,0,0,.25)"></div>` });
-        const marker = L.marker([lat, lng], { icon });
-
-        const badgeText = (v.number!=null && String(v.number).trim()!=='')
-          ? String(v.number)
-          : (v.id!=null ? String(v.id).slice(-4) : '');
-        const badge = badgeText ? `<span style="background:#7b4bff;color:#fff;padding:4px 8px;border-radius:10px;font-weight:700;display:inline-block;min-width:46px;text-align:center">${badgeText}</span>` : '';
-
-        const registration = v.plate || '';
-        const qtyOrPct = qty ? `${qty}${range}` : `${pctLabel}${range}`;
-        const apple = `https://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(v.model || 'Car')}`;
-
-        const card = document.createElement('div');
-        card.style.minWidth = '280px';
-        card.innerHTML = `
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            ${badge}
-            <div style="font-weight:800">${v.model || 'Vehicle'}</div>
-          </div>
-          <div style="color:#a7a7b4;margin-top:-2px;margin-bottom:8px">${registration || ' '}</div>
-          <div style="color:#a7a7b4;margin:6px 0">⛽ ${fuelKind}: <b>${qtyOrPct}</b></div>
-          <div style="color:#a7a7b4;margin:6px 0">📍 <span class="addr">${v.address || 'Ładowanie adresu…'}</span></div>
-          <div style="margin:8px 0"><a href="${apple}" target="_blank" rel="noopener">Otwórz w Apple Maps</a></div>
-        `;
-        marker.bindPopup(card);
-        marker.on('popupopen', async () => {
-          const el = card.querySelector('.addr');
-          if (el && (!v.address || v.address.length < 6)) {
-            const addr = await reverseGeocode(lat, lng);
-            el.textContent = addr || '';
-          }
-        });
-
-        safe(() => cluster.addLayer(marker));
-        n++;
+      // push to map
+      if (sourceReady){
+        const src = map.getSource('cars');
+        if (src) src.setData(toGeo(filtered));
       }
+      setCount(filtered.length);
 
-      // If we just changed city and have markers, fit to them once
-      if (justChangedCity && n > 0) {
-        try {
-          const b = cluster.getBounds();
-          if (b && b.isValid && b.isValid()) map.fitBounds(b, { maxZoom: 15, padding: [80,80] });
-        } catch {}
-        justChangedCity = false;
+      // fit to data on each load (for the chosen city)
+      if (filtered.length){
+        const b = new maplibregl.LngLatBounds();
+        filtered.forEach(v => b.extend([Number(v.lng), Number(v.lat)]));
+        try { map.fitBounds(b, { padding: 60, maxZoom: 15 }); } catch {}
       }
-
-      if (count) count.textContent = `${n} cars`;
-      statusEl().textContent = n ? `Updated ${new Date().toLocaleTimeString()}` : 'No cars match filters';
     }
 
-    async function load(cityName='krakow'){
-      if (isLoading) return;
+    async function load(){
+      if (!sourceReady || isLoading) return;
       isLoading = true;
       if (timer) { clearTimeout(timer); timer = null; }
-      statusEl().textContent = 'Loading…';
-      lastCity = cityName;
 
+      const city = citySel.value;
       try{
-        const params = new URLSearchParams();
-        params.set('city', cityName);
-        if (onlyAvailable) params.set('strict','1');   // explicit free only
-        else params.set('all','1');                    // show everything
-
-        const res = await fetch(`${API}?${params.toString()}`);
+        const res = await fetch(`${API}?city=${encodeURIComponent(city)}`);
         const data = await res.json();
-
-        if (Array.isArray(data) && data.length){
-          lastGoodData = data;
-          render(data);
-        } else {
-          statusEl().textContent = 'No data (using previous good data)';
-          if (lastGoodData.length) render(lastGoodData);
-          else render([]);
-        }
-      }catch(e){
+        if (Array.isArray(data) && data.length) render(data);
+        else if (lastGood.length) render(lastGood);
+        else render([]);
+      } catch (e) {
         console.error(e);
-        statusEl().textContent='Network error (using previous data)';
-        if (lastGoodData.length) render(lastGoodData);
+        if (lastGood.length) render(lastGood);
       } finally {
         isLoading = false;
-        timer = setTimeout(() => load(lastCity), 20000);
+        timer = setTimeout(load, 20000);
       }
     }
-
-    // Start
-    load('krakow');
   })();
   </script>
 </body>
