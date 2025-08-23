@@ -272,8 +272,8 @@
 
         marker.bindPopup(card);
         marker.on('popupopen', async () => {
-          const addr = await reverseGeocode(v.lat, v.lng);
           const el = card.querySelector('.addr');
+          const addr = v.address || await reverseGeocode(v.lat, v.lng);
           if (el) el.textContent = addr || `Odległość od centrum: ${km(dMeters)} km`;
         });
 
