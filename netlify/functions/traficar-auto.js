@@ -1,27 +1,31 @@
-// Traficar proxy — city filter + stable availability + numeric coords + small concurrency.
+// Traficar proxy — city-only filter, available cars, numeric coords, fast & polite.
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
   const q = event.queryStringParameters || {};
   const cityParam = (q.city || '').toLowerCase().trim();
-  const zoneParam = q.zoneId;          // optional: debug a single zone
-  const includeAll = q.all === '1';    // &all=1 -> include rented/reserved
-  const strict = q.strict === '1';     // &strict=1 -> require explicit "free/available"
+  const zoneParam = q.zoneId;  // optional single zone for debugging
 
-  // Probe first 30 zones (adjust if needed)
-  const zoneIds = zoneParam ? [Number(zoneParam)] : Array.from({ length: 30 }, (_, i) => i + 1);
+  // Probe up to 24 zones (good coverage, still fast)
+  const zoneIds = zoneParam ? [Number(zoneParam)] : Array.from({ length: 24 }, (_, i) => i + 1);
 
-  // City centers (keys match the dropdown)
-  const centers = {
-    krakow:[50.0614,19.9383], warszawa:[52.2297,21.0122], wroclaw:[51.1079,17.0385],
-    poznan:[52.4064,16.9252], trojmiasto:[54.3722,18.6383], slask:[50.2649,19.0238],
-    lublin:[51.2465,22.5684], lodz:[51.7592,19.4550], szczecin:[53.4285,14.5528], rzeszow:[50.0413,21.9990]
+  // City centers & tight radii (km) — adjust if needed
+  const CITY = {
+    krakow:     { c:[50.0614,19.9383], r:18 },
+    warszawa:   { c:[52.2297,21.0122], r:28 },
+    wroclaw:    { c:[51.1079,17.0385], r:18 },
+    poznan:     { c:[52.4064,16.9252], r:20 },
+    trojmiasto: { c:[54.3722,18.6383], r:35 }, // Gdańsk+Sopot+Gdynia
+    slask:      { c:[50.2649,19.0238], r:35 }, // Katowice agglo
+    lublin:     { c:[51.2465,22.5684], r:18 },
+    lodz:       { c:[51.7592,19.4550], r:20 },
+    szczecin:   { c:[53.4285,14.5528], r:20 },
+    rzeszow:    { c:[50.0413,21.9990], r:18 }
   };
-  const center = centers[cityParam] || null;
-  const CITY_RADIUS_KM = 180; // generous metro radius
+  const cityCfg = CITY[cityParam] || CITY.krakow;
 
   const headers = { accept: 'application/json', 'user-agent': 'Mozilla/5.0', referer: `${origin}/` };
 
-  // ---- models (id -> meta) ----
+  // Models (maxFuel + EV flag)
   const modelById = new Map();
   try {
     const r = await fetch(`${origin}/api/v1/car-models`, { headers });
@@ -37,26 +41,19 @@ export async function handler(event) {
     }
   } catch {}
 
-  // ---- utils ----
+  // utils
   const toNum = v => (typeof v === 'string' ? parseFloat(v) : v);
   const isNum = n => typeof n === 'number' && isFinite(n);
-  const fromE6Maybe = v => { const n = toNum(v); if (!isNum(n)) return undefined; return Math.abs(n) > 1000 ? n/1e6 : n; };
   const toRad = d => d*Math.PI/180;
-  const haversineKm = (a,b)=>{const R=6371,dLat=toRad(b[0]-a[0]),dLon=toRad(b[1]-a[1]);const A=Math.sin(dLat/2)**2+Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(A),Math.sqrt(1-A));};
+  const distKm = (a,b)=>{const R=6371,dLat=toRad(b[0]-a[0]),dLon=toRad(b[1]-a[1]);const A=Math.sin(dLat/2)**2+Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(A),Math.sqrt(1-A));};
 
-  function extractLatLng(obj, depth=0){
-    if (!obj || typeof obj!=='object' || depth>6) return null;
-    let lat = obj.lat ?? obj.latitude ?? obj.latE6 ?? obj.latitudeE6;
-    let lng = obj.lng ?? obj.lon ?? obj.longitude ?? obj.lonE6 ?? obj.longitudeE6;
-    lat = fromE6Maybe(lat); lng = fromE6Maybe(lng);
+  function extractLatLng(x){
+    let lat = x.lat ?? x.latitude, lng = x.lng ?? x.lon ?? x.longitude;
+    lat = toNum(lat); lng = toNum(lng);
     if (isNum(lat) && isNum(lng)) return {lat, lng};
-    const g = obj.geometry;
-    if (g && Array.isArray(g.coordinates) && g.coordinates.length>=2){
-      const LON = toNum(g.coordinates[0]), LAT = toNum(g.coordinates[1]);
-      if (isNum(LAT)&&isNum(LON)) return {lat:LAT, lng:LON};
-    }
-    for (const k of ['location','position','gps','coords']){
-      if (obj[k]){ const got = extractLatLng(obj[k], depth+1); if (got) return got; }
+    if (x.geometry?.coordinates?.length >= 2) {
+      const LON = toNum(x.geometry.coordinates[0]), LAT = toNum(x.geometry.coordinates[1]);
+      if (isNum(LAT) && isNum(LON)) return {lat: LAT, lng: LON};
     }
     return null;
   }
@@ -67,44 +64,27 @@ export async function handler(event) {
     return { name: x.modelName || x.name || x.model || 'Vehicle', electric: !!(x.electric ?? x.isElectric), maxFuel: null };
   }
 
-  // Field mapping from upstream
-  const mapFields = x => ({
-    plate: x.regPlate ? String(x.regPlate).trim().toUpperCase() : null,
-    number: (x.sideNumber!=null) ? String(x.sideNumber).trim().toUpperCase() : null,
-    rangeKm: isNum(toNum(x.range)) ? Math.round(toNum(x.range)) : null,
-    pct: isNum(toNum(x.fuel)) ? Math.round(toNum(x.fuel)) : null,
-    address: typeof x.location === 'string' ? x.location : null,
-    raw: {
-      available: x.available,
+  function mapFields(x){
+    const pct = toNum(x.fuel);       // % in sample
+    const rangeKm = toNum(x.range);  // km in sample
+    return {
+      plate: x.regPlate ? String(x.regPlate).trim().toUpperCase() : null,
+      number: (x.sideNumber!=null) ? String(x.sideNumber).trim().toUpperCase() : null,
+      pct: isNum(pct) ? Math.round(Math.max(0, Math.min(100, pct))) : null,
+      rangeKm: isNum(rangeKm) ? Math.round(rangeKm) : null,
+      address: typeof x.location === 'string' ? x.location : null,
+      status: typeof x.status === 'string' ? x.status : null,
       reserved: x.reserved ?? x.isReserved,
       rented: x.isRented ?? x.rented,
-      status: x.status ?? null
-    }
-  });
-
-  // Availability logic
-  function looksBusy(raw){
-    if (!raw) return false;
-    if (raw.reserved === true) return true;
-    if (raw.rented === true) return true;
-    if (typeof raw.status === 'string') {
-      const s = raw.status.toUpperCase();
-      if (/(RENT|RENTED|BUSY|RESERV|OCCUP|UNAVAIL|TAKEN|MAINT)/.test(s)) return true;
-      if (/(FREE|AVAILABLE|READY)/.test(s)) return false;
-    }
-    return false;
+      available: x.available
+    };
   }
-  function isAvailable(raw){
-    if (!raw) return true;
-    if (strict) {
-      if (raw.available === true) return true;
-      if (typeof raw.status === 'string' && /(FREE|AVAILABLE|READY)/i.test(raw.status)) return true;
-      return false;
-    }
-    if (raw.available === true) return true;
-    if (looksBusy(raw)) return false;
-    if (raw.available === false) return false; // conservative default
-    return true; // unknown -> include
+
+  function isBusy(f){
+    if (f.reserved === true) return true;
+    if (f.rented === true) return true;
+    if (typeof f.status === 'string' && /(RENT|RENTED|BUSY|RESERV|OCCUP|UNAVAIL|TAKEN|MAINT)/i.test(f.status)) return true;
+    return false;
   }
 
   async function fetchZone(zid){
@@ -119,31 +99,28 @@ export async function handler(event) {
         const pos = extractLatLng(item); if (!pos) continue;
         const lat = Number(pos.lat), lng = Number(pos.lng);
         if (!isNum(lat) || !isNum(lng)) continue;
-        if (center && haversineKm(center, [lat, lng]) > CITY_RADIUS_KM) continue;
+
+        // CITY-ONLY: drop anything outside the city's radius
+        if (distKm(cityCfg.c, [lat, lng]) > cityCfg.r) continue;
 
         const meta = modelMeta(item);
         const f = mapFields(item);
-
-        if (!includeAll && !isAvailable(f.raw)) continue;
-
-        const img = item.image || item.imageUrl || item.photoUrl || item.picture || item.pictureUrl || null;
-        const carId = item.id ?? item.vehicleId ?? item.carId ?? item.code ?? null;
+        if (isBusy(f)) continue;  // only available
 
         out.push({
-          id: carId, lat, lng,
+          id: item.id ?? item.vehicleId ?? item.carId ?? item.code ?? null,
+          lat, lng,
           model: meta.name, isElectric: !!meta.electric, maxFuel: meta.maxFuel,
-          plate: f.plate, number: f.number, pct: isNum(f.pct)?Math.max(0,Math.min(100,f.pct)):null,
-          rangeKm: f.rangeKm, img, address: f.address,
-          // pass through raw flags for optional client filtering
-          available: f.raw.available ?? null,
-          status: f.raw.status ?? null
+          plate: f.plate, number: f.number, pct: f.pct, rangeKm: f.rangeKm,
+          img: item.image || item.imageUrl || item.photoUrl || item.picture || item.pictureUrl || null,
+          address: f.address
         });
       }
       return out;
     } catch { return []; }
   }
 
-  // small concurrency (fast but polite)
+  // small concurrency
   const limit = 6;
   let idx = 0;
   const results = [];
