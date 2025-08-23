@@ -1,13 +1,14 @@
-// Traficar proxy — city filter + smarter availability + faster fetching.
+// Traficar proxy — stable, city filter, conservative availability, small concurrency.
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
   const q = event.queryStringParameters || {};
   const cityParam = (q.city || '').toLowerCase().trim();
-  const zoneParam = q.zoneId;           // optional: debug single zone
+  const zoneParam = q.zoneId;           // optional: debug a single zone
   const includeAll = q.all === '1';     // &all=1 => include rented/reserved too
+  const strict = q.strict === '1';      // &strict=1 => require explicit "free"
 
-  // Try first 15 zones (fast, usually enough)
-  const zoneIds = zoneParam ? [Number(zoneParam)] : Array.from({ length: 15 }, (_, i) => i + 1);
+  // Try first 30 zones; you can raise if needed
+  const zoneIds = zoneParam ? [Number(zoneParam)] : Array.from({ length: 30 }, (_, i) => i + 1);
 
   // City centers (same keys as dropdown)
   const centers = {
@@ -26,9 +27,8 @@ export async function handler(event) {
     const r = await fetch(`${origin}/api/v1/car-models`, { headers });
     const data = await r.json();
     const arr = Array.isArray(data) ? data : (data.carModels || data.items || data.data || []);
-    for (const m of arr) {
-      if (!m) continue;
-      const id = m.id ?? m.modelId ?? m.code;
+    for (const m of arr || []) {
+      const id = m?.id ?? m?.modelId ?? m?.code;
       if (id != null) modelById.set(Number(id), {
         name: m.name || m.model || 'Vehicle',
         electric: !!m.electric,
@@ -67,8 +67,7 @@ export async function handler(event) {
     return { name: x.modelName || x.name || x.model || 'Vehicle', electric: !!(x.electric ?? x.isElectric), maxFuel: null };
   }
 
-  // Map fields from API sample:
-  // regPlate = registration, sideNumber = fleet badge; range (km), fuel (%), location (address)
+  // Map fields from API sample
   const mapFields = x => ({
     plate: x.regPlate ? String(x.regPlate).trim().toUpperCase() : null,
     number: (x.sideNumber!=null) ? String(x.sideNumber).trim().toUpperCase() : null,
@@ -77,26 +76,31 @@ export async function handler(event) {
     address: typeof x.location === 'string' ? x.location : null
   });
 
-  // Availability: treat available:false as "unknown" unless other busy signals present.
+  // Availability
   function looksBusy(x){
     if (x.reserved === true || x.isReserved === true) return true;
     if (x.isRented === true || x.rented === true) return true;
     if (x.reservationId != null) return true;
     if (typeof x.status === 'string') {
       const s = x.status.toUpperCase();
-      if (/(RENT|BUSY|RESERV|OCCUP|UNAVAIL|TAKEN)/.test(s)) return true;
+      if (/(RENT|RENTED|BUSY|RESERV|OCCUP|UNAVAIL|TAKEN|MAINT)/.test(s)) return true;
+      if (/(FREE|AVAILABLE|READY)/.test(s)) return false;
     }
     return false;
   }
   function isAvailable(x){
     if (includeAll) return true;
-    if (x.available === true) return true;       // explicit free
-    if (looksBusy(x)) return false;              // clear busy
-    // NOTE: x.available === false -> don't auto-exclude; treat as unknown => include
-    return true;
+    if (strict) {                      // strict: only explicit free
+      if (x.available === true) return true;
+      if (typeof x.status === 'string' && /(FREE|AVAILABLE|READY)/i.test(x.status)) return true;
+      return false;
+    }
+    if (x.available === true) return true;   // conservative default
+    if (looksBusy(x)) return false;
+    if (x.available === false) return false; // conservative: don't trust false => treat as not free
+    return true;                             // unknown => include
   }
 
-  // ---- fetch with small concurrency ----
   async function fetchZone(zid){
     const url = `${origin}/api/v1/cars?zoneId=${zid}&lastUpdate=0`;
     try {
@@ -126,7 +130,8 @@ export async function handler(event) {
     } catch { return []; }
   }
 
-  const limit = 5;  // quick but polite
+  // Small concurrency pool to be fast but polite
+  const limit = 6;
   let idx = 0;
   const results = [];
   async function worker(){
@@ -134,62 +139,12 @@ export async function handler(event) {
       const my = idx++;
       const arr = await fetchZone(zoneIds[my]);
       results.push(...arr);
-      await new Promise(r => setTimeout(r, 60));
+      await new Promise(r => setTimeout(r, 80));
     }
   }
   await Promise.all(Array(Math.min(limit, zoneIds.length)).fill(0).map(worker));
 
-  // If somehow empty AND we were filtering, try once more including all (fallback)
-  if (!results.length && !includeAll) {
-    const everything = [];
-    idx = 0;
-    async function workerAll(){
-      while (idx < zoneIds.length){
-        const my = idx++;
-        const url = `${origin}/api/v1/cars?zoneId=${zoneIds[my]}&lastUpdate=0`;
-        try{
-          const r = await fetch(url, { headers });
-          if (!r.ok) { await new Promise(rr=>setTimeout(rr,60)); continue; }
-          const data = await r.json();
-          const list = Array.isArray(data) ? data : (Array.isArray(data.cars) ? data.cars : []);
-          for (const item of list){
-            const pos = extractLatLng(item); if (!pos) continue;
-            if (center && haversineKm(center, [pos.lat,pos.lng]) > CITY_RADIUS_KM) continue;
-            const meta = modelMeta(item);
-            const f = mapFields(item);
-            const img = item.image || item.imageUrl || item.photoUrl || item.picture || item.pictureUrl || null;
-            const carId = item.id ?? item.vehicleId ?? item.carId ?? item.code ?? null;
-            everything.push({
-              id: carId, lat: pos.lat, lng: pos.lng,
-              model: meta.name, isElectric: !!meta.electric, maxFuel: meta.maxFuel,
-              plate: f.plate, number: f.number, pct: num(f.pct)?Math.max(0,Math.min(100,f.pct)):null,
-              rangeKm: f.rangeKm, img, address: f.address
-            });
-          }
-        } catch {}
-        await new Promise(rr=>setTimeout(rr,60));
-      }
-    }
-    await Promise.all(Array(Math.min(limit, zoneIds.length)).fill(0).map(workerAll));
-    if (everything.length) {
-      // still de-dup and return (shows cars even if busy flags were odd)
-      const seen = new Set();
-      const unique = everything.filter(v => {
-        const key = `${v.plate||v.number||v.id||''}|${v.lat.toFixed(6)}|${v.lng.toFixed(6)}`;
-        if (seen.has(key)) return false; seen.add(key); return true;
-      });
-      return {
-        statusCode: 200,
-        headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' },
-        body: JSON.stringify(unique)
-      };
-    }
-  }
-
-  if (!results.length) {
-    return { statusCode: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: '[]' };
-  }
-
+  // De-dup
   const seen = new Set();
   const unique = results.filter(v => {
     const key = `${v.plate||v.number||v.id||''}|${v.lat.toFixed(6)}|${v.lng.toFixed(6)}`;
