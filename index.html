@@ -5,12 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>TrafiCar Live Map</title>
 
+  <!-- Leaflet & MarkerCluster -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
+  <!-- Nice font (optional) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap">
 
@@ -131,14 +133,16 @@
 
 <script>
 (function(){
-  // point the app to the auto-discover proxy
+  // Use the auto-discover proxy function
   const API = '/.netlify/functions/traficar-auto';
 
-  // Map setup
+  // City centers
   const centers = {
     krakow:[50.0614,19.9383], warszawa:[52.2297,21.0122], wroclaw:[51.1079,17.0385], poznan:[52.4064,16.9252],
     trojmiasto:[54.3722,18.6383], slask:[50.2649,19.0238], lublin:[51.2465,22.5684], lodz:[51.7592,19.4550], szczecin:[53.4285,14.5528], rzeszow:[50.0413,21.9990]
   };
+
+  // Map
   const map = L.map('map', { zoomControl:false }).setView(centers.krakow, 13);
   L.control.zoom({position:'bottomright'}).addTo(map);
   const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
@@ -175,15 +179,21 @@
   }
 
   function color(p){ if(p>=50) return '#3ddc84'; if(p>=20) return '#ffb020'; return '#ff6b6b'; }
+
+  // Normalize many possible response shapes to {lat,lng,model,plate,pct}
   function norm(x){
-    const lat = x.lat||x.latitude||(x.location&&x.location.lat)||(x.geometry&&x.geometry.coordinates&&x.geometry.coordinates[1]);
-    const lng = x.lng||x.longitude||(x.location&&x.location.lng)||(x.geometry&&x.geometry.coordinates&&x.geometry.coordinates[0]);
-    const model = x.model||x.name||x.vehicleModel||(x.properties&&x.properties.model)||'Vehicle';
-    const plate = x.plate||x.registration||x.license||x.identifier||(x.properties&&x.properties.plate)||'';
-    const fuel = x.fuel||x.fuelLevel||x.fuelPercent||(x.properties&&(x.properties.fuel||x.properties.fuelLevel));
-    const batt = x.battery||x.batteryLevel||x.batteryPercent||(x.properties&&(x.properties.battery||x.properties.batteryLevel));
-    const pct = typeof batt==='number' ? batt : (typeof fuel==='number' ? fuel : null);
-    return {lat,lng,model,plate,pct};
+    const lat = x.lat ?? x.latitude ?? (x.latE6 != null ? x.latE6/1e6 :
+              (x.location && (x.location.lat ?? x.location.latitude)) ??
+              (x.geometry && x.geometry.coordinates && x.geometry.coordinates[1]));
+    const lng = x.lng ?? x.lon ?? x.longitude ?? (x.lonE6 != null ? x.lonE6/1e6 :
+              (x.location && (x.location.lng ?? x.location.lon ?? x.location.longitude)) ??
+              (x.geometry && x.geometry.coordinates && x.geometry.coordinates[0]));
+    const model = x.model || x.name || x.vehicleModel || (x.properties && x.properties.model) || 'Vehicle';
+    const plate = x.plate || x.registration || x.license || x.identifier || (x.properties && x.properties.plate) || '';
+    const fuel  = x.fuel || x.fuelLevel || x.fuelPercent || (x.properties && (x.properties.fuel || x.properties.fuelLevel));
+    const batt  = x.battery || x.batteryLevel || x.batteryPercent || (x.properties && (x.properties.battery || x.properties.batteryLevel));
+    const pct = typeof batt === 'number' ? batt : (typeof fuel === 'number' ? fuel : null);
+    return { lat, lng, model, plate, pct };
   }
 
   async function load(force=false){
@@ -201,6 +211,7 @@
 
       const center = map.getCenter(), r = +radius.value, min = +fuel.value, m = model.value.trim();
       cluster.clearLayers(); let n = 0;
+
       for(const item of list){
         const v = norm(item); if(!(v.lat && v.lng)) continue;
         if(m && (!v.model || v.model !== m)) continue;
