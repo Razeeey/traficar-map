@@ -122,10 +122,10 @@
     <span>• Data: fioletowe.live API</span>
   </div>
 
-  <!-- SAFE SCRIPT (tolerant to missing fields) -->
+  <!-- SAFE SCRIPT -->
   <script>
   (() => {
-    // ---- helpers ------------------------------------------------------------
+    // Helpers
     const $ = id => document.getElementById(id);
     const statusEl = () => $('status') || { textContent: '' };
     function safe(fn){ try { return fn(); } catch(e){ console.error(e); statusEl().textContent = 'JS error: ' + e.message; } }
@@ -134,7 +134,7 @@
     const dist = (a,b)=>{ const dLat=toRad(b[0]-a[0]), dLon=toRad(b[1]-a[1]); const A=Math.sin(dLat/2)**2+Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2; return R*2*Math.atan2(Math.sqrt(A),Math.sqrt(1-A)); };
     const km = m => (m/1000).toFixed(1);
 
-    // ---- constants ----------------------------------------------------------
+    // API and city centers
     const API = '/.netlify/functions/traficar-auto';
     const centers = {
       krakow:[50.0614,19.9383], warszawa:[52.2297,21.0122], wroclaw:[51.1079,17.0385],
@@ -142,7 +142,7 @@
       lublin:[51.2465,22.5684], lodz:[51.7592,19.4550], szczecin:[53.4285,14.5528], rzeszow:[50.0413,21.9990]
     };
 
-    // ---- map init -----------------------------------------------------------
+    // Map init
     let map, tiles, cluster, circle=null, timer=null, myLoc=null, lastData=[];
     safe(() => {
       map = L.map('map', { zoomControl:false }).setView(centers.krakow, 13);
@@ -152,18 +152,14 @@
       map.addLayer(cluster);
     });
 
-    // ---- UI refs ------------------------------------------------------------
-    const city = $('city');
-    const filterBtn = $('filterBtn'), panel = $('filterPanel'), refreshBtn = $('refreshBtn'),
-          locateBtn = $('locateBtn'), themeBtn = $('themeBtn');
-    const modelSel = $('modelSelect'), fuel = $('fuelRange'), fuelVal = $('fuelVal'),
-          radius = $('radiusRange'), radiusVal = $('radiusVal'), apply = $('applyFilters');
-    const count = $('count');
-
+    // UI refs
+    const city=$('city'), filterBtn=$('filterBtn'), panel=$('filterPanel'), refreshBtn=$('refreshBtn'), locateBtn=$('locateBtn'), themeBtn=$('themeBtn');
+    const modelSel=$('modelSelect'), fuel=$('fuelRange'), fuelVal=$('fuelVal'), radius=$('radiusRange'), radiusVal=$('radiusVal'), apply=$('applyFilters');
+    const count=$('count');
     if (fuelVal && fuel) fuelVal.textContent = fuel.value + '%';
     if (radiusVal && radius) radiusVal.textContent = radius.value;
 
-    // ---- events -------------------------------------------------------------
+    // Events
     if (filterBtn && panel) filterBtn.onclick = () => { panel.style.display = (panel.style.display==='block'?'none':'block'); panel.setAttribute('aria-hidden', panel.style.display!=='block'); };
     if (apply) apply.onclick = () => { if (panel) panel.style.display='none'; render(lastData, true); };
     if (fuel && fuelVal) fuel.oninput = () => fuelVal.textContent = fuel.value + '%';
@@ -192,6 +188,7 @@
       if (r>0){ circle = L.circle(map.getCenter(), { radius:r, color:'#7b4bff', weight:1, fillOpacity:0.05 }); circle.addTo(map); }
     }
 
+    // Build model dropdown from data
     function buildModelOptions(data){
       if (!modelSel) return;
       const names = Array.from(new Set((data||[]).map(v => v.model).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pl'));
@@ -200,12 +197,29 @@
       if (names.includes(cur)) modelSel.value = cur;
     }
 
-    function litersOrKwh(v){
+    function qtyText(v){
       if (v.pct==null || !v.maxFuel) return null;
       const val = Math.round(v.maxFuel * (v.pct/100));
-      const cap = v.maxFuel;
       const unit = v.isElectric ? 'kWh' : 'L';
-      return `${val}/${cap}${unit}`;
+      return `${val}/${v.maxFuel}${unit}`;
+    }
+
+    // Simple reverse geocode for address line
+    const addrCache = new Map();
+    async function reverseGeocode(lat,lng){
+      const key = lat.toFixed(5)+','+lng.toFixed(5);
+      if (addrCache.has(key)) return addrCache.get(key);
+      try{
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+        const r = await fetch(url, { headers: { 'Accept':'application/json' }});
+        const j = await r.json();
+        const s = j.address ? [
+          j.address.city || j.address.town || j.address.village || '',
+          j.address.road ? `ul. ${j.address.road}` : ''
+        ].filter(Boolean).join(', ') : (j.display_name || '');
+        addrCache.set(key, s);
+        return s;
+      }catch{ return ''; }
     }
 
     function render(data, fromFilter=false){
@@ -228,27 +242,41 @@
 
         const dMeters = dist(center, [v.lat, v.lng]);
         const pctLabel = (v.pct==null ? '—' : (Math.round(v.pct)+'%'));
-        const qty = litersOrKwh(v); // "14/50L" or "36/60kWh"
+        const qty = qtyText(v);
         const range = (v.rangeKm!=null ? ` (${v.rangeKm} km)` : '');
         const fuelKind = v.isElectric ? 'Bateria' : 'Paliwo';
+
+        // purple badge = fleet/side number (e.g. 7805)
+        const badgeText = v.number || v.id || '';
+        const topImage = v.img ? `<img src="${v.img}" alt="${v.model||'Car'}" style="width:100%;height:140px;object-fit:cover;border-radius:12px">` : '';
+        const idBadge = badgeText ? `<div style="position:absolute;left:10px;top:10px;background:#7b4bff;color:#fff;font-weight:700;padding:4px 8px;border-radius:10px;">${badgeText}</div>` : '';
+
+        // registration line (e.g. "KK 11600")
+        const registration = v.plate || '';
+
+        const qtyOrPct = qty ? `${qty}${range}` : `${pctLabel}${range}`;
+        const apple = `https://maps.apple.com/?ll=${v.lat},${v.lng}&q=${encodeURIComponent(v.model || 'Car')}`;
         const icon = L.divIcon({ className:'mk', html:`<div style="width:22px;height:22px;border-radius:50%;background:${color(v.pct??100)};border:2px solid #111;box-shadow:0 0 0 2px rgba(0,0,0,.25)"></div>` });
         const marker = L.marker([v.lat, v.lng], { icon });
-        const plate = v.plate || '—';
-        const apple = `https://maps.apple.com/?ll=${v.lat},${v.lng}&q=${encodeURIComponent(v.model || 'Car')}`;
-        const topImage = v.img ? `<img src="${v.img}" alt="${v.model||'Car'}" style="width:100%;height:140px;object-fit:cover;border-radius:12px">` : '';
-        const idBadge = v.id!=null ? `<div style="position:absolute;left:10px;top:10px;background:#7b4bff;color:#fff;font-weight:700;padding:4px 8px;border-radius:10px;">${v.id}</div>` : '';
-        const qtyText = qty ? `${qty}${range}` : `${pctLabel}${range}`;
-        const card = `
-          <div style="min-width:280px">
-            <div style="position:relative;margin-bottom:8px;border-radius:12px;overflow:hidden">${topImage}${idBadge}</div>
-            <div style="font-weight:800;margin-bottom:2px">${v.model || 'Vehicle'}</div>
-            <div style="color:#a7a7b4;margin-bottom:8px">${plate}</div>
-            <div style="color:#a7a7b4;margin:6px 0">⛽ ${fuelKind}: <b>${qtyText}</b></div>
-            <div style="color:#a7a7b4;margin:6px 0">📍 Odległość od centrum: <b>${km(dMeters)} km</b></div>
-            <div style="margin:8px 0"><a href="${apple}" target="_blank" rel="noopener">Otwórz w Apple Maps</a></div>
-          </div>
+
+        const card = document.createElement('div');
+        card.style.minWidth = '280px';
+        card.innerHTML = `
+          <div style="position:relative;margin-bottom:8px;border-radius:12px;overflow:hidden">${topImage}${idBadge}</div>
+          <div style="font-weight:800;margin-bottom:2px">${v.model || 'Vehicle'}</div>
+          <div style="color:#a7a7b4;margin-bottom:8px">${registration || ' '}</div>
+          <div style="color:#a7a7b4;margin:6px 0">⛽ ${fuelKind}: <b>${qtyOrPct}</b></div>
+          <div style="color:#a7a7b4;margin:6px 0">📍 <span class="addr">Ładowanie adresu…</span></div>
+          <div style="margin:8px 0"><a href="${apple}" target="_blank" rel="noopener">Otwórz w Apple Maps</a></div>
         `;
-        safe(() => marker.bindPopup(card));
+
+        marker.bindPopup(card);
+        marker.on('popupopen', async () => {
+          const addr = await reverseGeocode(v.lat, v.lng);
+          const el = card.querySelector('.addr');
+          if (el) el.textContent = addr || `Odległość od centrum: ${km(dMeters)} km`;
+        });
+
         safe(() => cluster.addLayer(marker));
         n++;
       }
