@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TrafiCar Live Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<style>
+  html,body,#map{height:100%;margin:0}
+  .top{position:fixed;z-index:1000;left:10px;top:10px;background:#1f1f26cc;color:#fff;padding:8px 10px;border-radius:10px}
+  select,button{margin-left:6px}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="top">
+  City:
+  <select id="city">
+    <option value="krakow" selected>Kraków</option>
+    <option value="warszawa">Warszawa</option>
+    <option value="wroclaw">Wrocław</option>
+    <option value="poznan">Poznań</option>
+    <option value="trojmiasto">Trójmiasto</option>
+    <option value="slask">Śląsk</option>
+    <option value="lublin">Lublin</option>
+    <option value="lodz">Łódź</option>
+    <option value="szczecin">Szczecin</option>
+    <option value="rzeszow">Rzeszów</option>
+  </select>
+  <button id="refresh">Refresh</button>
+  <span id="status" style="margin-left:8px">Ready</span>
+</div>
+<script>
+const API = '/.netlify/functions/traficar';
+const centers = { krakow:[50.0614,19.9383], warszawa:[52.2297,21.0122], wroclaw:[51.1079,17.0385], poznan:[52.4064,16.9252],
+  trojmiasto:[54.3722,18.6383], slask:[50.2649,19.0238], lublin:[51.2465,22.5684], lodz:[51.7592,19.4550], szczecin:[53.4285,14.5528], rzeszow:[50.0413,21.9990] };
+const map = L.map('map').setView(centers.krakow, 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+const cluster = L.markerClusterGroup({ showCoverageOnHover:false, disableClusteringAtZoom:17 });
+map.addLayer(cluster);
+const cityEl = document.getElementById('city');
+document.getElementById('refresh').onclick = () => load();
+cityEl.onchange = () => { map.setView(centers[cityEl.value]||centers.krakow,13); load(); };
+function norm(x){
+  const lat=x.lat||x.latitude||(x.location&&x.location.lat)||(x.geometry&&x.geometry.coordinates&&x.geometry.coordinates[1]);
+  const lng=x.lng||x.longitude||(x.location&&x.location.lng)||(x.geometry&&x.geometry.coordinates&&x.geometry.coordinates[0]);
+  const model=x.model||x.name||x.vehicleModel||(x.properties&&x.properties.model)||'Car';
+  const plate=x.plate||x.registration||x.license||x.identifier||(x.properties&&x.properties.plate)||'';
+  const fuel=x.fuel||x.fuelLevel||x.fuelPercent||(x.properties&&(x.properties.fuel||x.properties.fuelLevel));
+  const batt=x.battery||x.batteryLevel||x.batteryPercent||(x.properties&&(x.properties.battery||x.properties.batteryLevel));
+  const pct=typeof batt==='number'?batt:(typeof fuel==='number'?fuel:null);
+  return {lat,lng,model,plate,pct};
+}
+async function load(){
+  try{
+    document.getElementById('status').textContent = 'Loading…';
+    const res = await fetch(API + '?city=' + encodeURIComponent(cityEl.value));
+    if(!res.ok) throw new Error('proxy ' + res.status);
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : (data.features ? data.features.map(f=>({ ...f.properties, geometry:f.geometry })) : []);
+    cluster.clearLayers(); let n=0;
+    for(const item of list){
+      const v = norm(item); if(!(v.lat && v.lng)) continue;
+      const icon = L.divIcon({className:'c', html:`<div style="width:18px;height:18px;border-radius:50%;background:#3ddc84;border:2px solid #111"></div>`});
+      L.marker([v.lat,v.lng],{icon}).bindPopup(`<b>${v.model}</b><br>Plate: ${v.plate||'—'}`).addTo(cluster);
+      n++;
+    }
+    document.getElementById('status').textContent = `Loaded ${n} cars`;
+  }catch(e){
+    console.error(e);
+    document.getElementById('status').textContent = 'Could not load data (proxy)';
+  }
+}
+load();
+</script>
+</body>
+</html>
