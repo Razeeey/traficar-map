@@ -5,14 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>TrafiCar Live Map</title>
 
-  <!-- Leaflet & Cluster -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
-  <!-- Font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap">
 
@@ -31,8 +29,8 @@
       border:1px solid rgba(255,255,255,.06); border-radius:var(--radius); padding:10px 12px; box-shadow:var(--shadow);
     }
     .brand{display:flex; align-items:center; gap:10px; font-weight:800; padding:8px 12px; background:linear-gradient(135deg,var(--accent),var(--accent2)); border-radius:14px; color:white}
-    .pill, select, button{background:var(--panel2); color:var(--text); border:1px solid rgba(255,255,255,.06); padding:9px 12px; border-radius:14px; font-weight:600; cursor:pointer}
-    .pill:hover, select:hover, button:hover{ border-color:rgba(255,255,255,.14)}
+    .pill, select, button, .toggle{background:var(--panel2); color:var(--text); border:1px solid rgba(255,255,255,.06); padding:9px 12px; border-radius:14px; font-weight:600; cursor:pointer}
+    .pill:hover, select:hover, button:hover, .toggle:hover{ border-color:rgba(255,255,255,.14)}
     .city{min-width:150px}
     .spacer{flex:1}
 
@@ -56,6 +54,9 @@
     .dot.ok{background:var(--ok)} .dot.low{background:#ffb020} .dot.crit{background:#ff6b6b}
     .spinner{display:inline-block; width:14px; height:14px; border:2px solid #ffffff30; border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
+
+    .toggle{display:flex; align-items:center; gap:8px; user-select:none}
+    .toggle input{accent-color:#7b4bff}
   </style>
 </head>
 <body>
@@ -76,6 +77,11 @@
       <option value="szczecin">Szczecin</option>
       <option value="rzeszow">Rzeszów</option>
     </select>
+
+    <label class="toggle" title="Show only available cars">
+      <input id="onlyAvail" type="checkbox" checked>
+      Available only
+    </label>
 
     <button id="filterBtn" class="pill">Filter ▾</button>
     <button id="refreshBtn" class="pill">Refresh</button>
@@ -122,7 +128,6 @@
     <span>• Data: fioletowe.live API</span>
   </div>
 
-  <!-- MAIN SCRIPT -->
   <script>
   (() => {
     // Helpers
@@ -142,7 +147,11 @@
     };
 
     // Map init
-    let map, tiles, cluster, circle=null, timer=null, myLoc=null, lastData=[], lastCity='krakow';
+    let map, tiles, cluster, circle=null, myLoc=null;
+    let lastCity='krakow', onlyAvailable=true, timer=null, isLoading=false;
+    let lastGoodData=[];  // cache to keep UI stable
+    let currentData=[];
+
     safe(() => {
       map = L.map('map', { zoomControl:false }).setView(centers.krakow, 13);
       L.control.zoom({position:'bottomright'}).addTo(map);
@@ -154,27 +163,25 @@
     // UI refs
     const city=$('city'), filterBtn=$('filterBtn'), panel=$('filterPanel'), refreshBtn=$('refreshBtn'), locateBtn=$('locateBtn'), themeBtn=$('themeBtn');
     const modelSel=$('modelSelect'), fuel=$('fuelRange'), fuelVal=$('fuelVal'), radius=$('radiusRange'), radiusVal=$('radiusVal'), apply=$('applyFilters');
+    const onlyAvail=$('onlyAvail');
     const count=$('count');
     if (fuelVal && fuel) fuelVal.textContent = fuel.value + '%';
     if (radiusVal && radius) radiusVal.textContent = radius.value;
 
     // Events
     if (filterBtn && panel) filterBtn.onclick = () => { panel.style.display = (panel.style.display==='block'?'none':'block'); panel.setAttribute('aria-hidden', panel.style.display!=='block'); };
-    if (apply) apply.onclick = () => { if (panel) panel.style.display='none'; render(lastData, true); };
+    if (apply) apply.onclick = () => { if (panel) panel.style.display='none'; render(currentData, true); };
     if (fuel && fuelVal) fuel.oninput = () => fuelVal.textContent = fuel.value + '%';
-    if (radius && radiusVal) radius.oninput = () => { radiusVal.textContent = radius.value; drawRadius(); render(lastData, true); };
-    if (city) city.onchange = () => {
-      lastCity = city.value;
-      safe(() => map.setView(centers[lastCity]||centers.krakow,13));
-      load(lastCity);  // fetch cars for this city
-    };
+    if (radius && radiusVal) radius.oninput = () => { radiusVal.textContent = radius.value; drawRadius(); render(currentData, true); };
+    if (city) city.onchange = () => { lastCity = city.value; safe(() => map.setView(centers[lastCity]||centers.krakow,13)); load(lastCity); };
+    if (onlyAvail) onlyAvail.onchange = () => { onlyAvailable = !!onlyAvail.checked; load(lastCity); };
     if (refreshBtn) refreshBtn.onclick = () => load(lastCity);
     if (locateBtn) locateBtn.onclick = () => {
       if (!navigator.geolocation) return alert('Geolocation not supported');
       navigator.geolocation.getCurrentPosition(p => {
         myLoc = [p.coords.latitude, p.coords.longitude];
         safe(() => map.setView(myLoc, 14));
-        drawRadius(); render(lastData, true);
+        drawRadius(); render(currentData, true);
       }, () => alert('Could not get your location'));
     };
     if (themeBtn) themeBtn.onclick = () => {
@@ -191,7 +198,7 @@
       if (r>0){ circle = L.circle(map.getCenter(), { radius:r, color:'#7b4bff', weight:1, fillOpacity:0.05 }); circle.addTo(map); }
     }
 
-    // Build model dropdown from data
+    // Build model dropdown from the *cached* lastGoodData so it never goes blank
     function buildModelOptions(data){
       if (!modelSel) return;
       const names = Array.from(new Set((data||[]).map(v => v.model).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pl'));
@@ -207,7 +214,6 @@
       return `${val}/${v.maxFuel}${unit}`;
     }
 
-    // Simple reverse geocode; also uses API-provided address if present
     const addrCache = new Map();
     async function reverseGeocode(lat,lng){
       const key = lat.toFixed(5)+','+lng.toFixed(5);
@@ -226,24 +232,27 @@
     }
 
     function render(data, fromFilter=false){
-      lastData = Array.isArray(data) ? data : [];
-      if (!fromFilter) buildModelOptions(lastData);
+      currentData = Array.isArray(data) ? data : [];
+      if (!fromFilter) buildModelOptions(lastGoodData.length ? lastGoodData : currentData);
 
       const center = myLoc || (centers[lastCity] || centers.krakow);
       const r = radius ? +radius.value : 0;
       const min = fuel ? +fuel.value : 0;
       const m = modelSel ? modelSel.value.trim() : '';
 
+      // Apply client-side filters (model, min fuel, radius)
+      const filtered = currentData.filter(v => {
+        if (!v || typeof v.lat !== 'number' || typeof v.lng !== 'number') return false;
+        if (m && v.model !== m) return false;
+        if (min && (v.pct==null || v.pct < min)) return false;
+        if (r>0){ const d = dist(center, [v.lat, v.lng]); if (d > r) return false; }
+        return true;
+      });
+
       safe(() => cluster.clearLayers());
       let n=0;
 
-      for (const v of lastData){
-        if (!v || typeof v.lat !== 'number' || typeof v.lng !== 'number') continue;
-        if (m && v.model !== m) continue;
-        if (min && (v.pct==null || v.pct < min)) continue;
-        if (r>0){ const d = dist(center, [v.lat, v.lng]); if (d > r) continue; }
-
-        const dMeters = dist(center, [v.lat, v.lng]);
+      for (const v of filtered){
         const pctLabel = (v.pct==null ? '—' : (Math.round(v.pct)+'%'));
         const qty = qtyText(v);
         const range = (v.rangeKm!=null ? ` (${v.rangeKm} km)` : '');
@@ -251,7 +260,6 @@
         const icon = L.divIcon({ className:'mk', html:`<div style="width:22px;height:22px;border-radius:50%;background:${color(v.pct??100)};border:2px solid #111;box-shadow:0 0 0 2px rgba(0,0,0,.25)"></div>` });
         const marker = L.marker([v.lat, v.lng], { icon });
 
-        // Fleet/side number badge (fallback: last 4 of ID)
         const badgeText = (v.number!=null && String(v.number).trim()!=='')
           ? String(v.number)
           : (v.id!=null ? String(v.id).slice(-4) : '');
@@ -279,7 +287,7 @@
           const el = card.querySelector('.addr');
           if (el && (!v.address || v.address.length < 6)) {
             const addr = await reverseGeocode(v.lat, v.lng);
-            el.textContent = addr || `Odległość od centrum: ${km(dMeters)} km`;
+            el.textContent = addr || '';
           }
         });
 
@@ -292,23 +300,43 @@
     }
 
     async function load(cityName='krakow'){
+      if (isLoading) return;           // prevent overlapping fetches
+      isLoading = true;
+      if (timer) { clearTimeout(timer); timer = null; }
+
       statusEl().textContent = 'Loading…';
       lastCity = cityName;
+
       try{
-        const res = await fetch(`${API}?city=${encodeURIComponent(cityName)}`);
-        if(!res.ok){ const t=await res.text().catch(()=> ''); statusEl().textContent='Proxy error '+res.status+(t?(' — '+t.slice(0,120)):''); return; }
+        const params = new URLSearchParams();
+        params.set('city', cityName);
+        if (!onlyAvailable) params.set('all','1');  // show everything if toggle off
+        params.set('strict','1');                   // conservative availability in backend
+        const res = await fetch(`${API}?${params.toString()}`);
         const data = await res.json();
-        render(data);
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => load(lastCity), 20000);
+
+        // If we got some data, accept and cache it; if not, keep previous data
+        if (Array.isArray(data) && data.length){
+          lastGoodData = data;
+          render(data);
+        } else {
+          statusEl().textContent = 'No data (using previous good data)';
+          if (lastGoodData.length) render(lastGoodData);
+          else render([]); // first load and empty -> show 0
+        }
       }catch(e){
         console.error(e);
-        statusEl().textContent='Could not load data: '+e.message;
-        if (timer) clearTimeout(timer);
+        statusEl().textContent='Network error (using previous data)';
+        if (lastGoodData.length) render(lastGoodData);
+      } finally {
+        isLoading = false;
+        // schedule next refresh
+        timer = setTimeout(() => load(lastCity), 20000);
       }
     }
 
-    load('krakow'); // initial
+    // Kick off
+    load('krakow');
   })();
   </script>
 </body>
