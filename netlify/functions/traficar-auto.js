@@ -1,4 +1,4 @@
-// Traficar proxy: adds proper registration (plate) and fleet/side number (number).
+// Traficar proxy: maps regPlate (registration), sideNumber (fleet #), range (km).
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
   const zoneParam = event.queryStringParameters?.zoneId;
@@ -57,79 +57,48 @@ export async function handler(event) {
   }
 
   // ---- registration (plate) & fleet/side number (number) ----
-  // Registration like "KK 11600" (loose Polish-ish)
-  const REG_RE = /^[A-ZĄĆĘŁŃÓŚŹŻ]{1,3}\s?[A-Z0-9]{4,6}$/;
-  // Side number / badge like "7805" (3–6 digits) or short letters+digits
-  const SIDE_RE = /^([A-Z]{0,3}\s?)?\d{3,6}$/;
-
-  function guessFromStrings(...strings) {
-    let plate = null, number = null;
-    for (const s of strings) {
-      if (!s || typeof s !== 'string') continue;
-      const t = s.trim().toUpperCase();
-      if (!plate && REG_RE.test(t)) plate = t;
-      if (!number && SIDE_RE.test(t)) number = t.replace(/\s+/g, '');
-      if (plate && number) break;
-    }
-    return { plate, number };
-  }
-
   function pickPlateAndNumber(x) {
-    // Common explicit fields first
+    // From your sample: regPlate & sideNumber are the correct fields
     const plateCands = [
+      x.regPlate, // <— NEW
       x.licensePlate, x.plate, x.plates, x.plateNumber,
       x.registration, x.registrationNumber, x.vehicleRegistrationNumber, x.numberPlate
     ];
     const numberCands = [
-      x.number, x.carNumber, x.sideNumber, x.fleetNumber, x.callSign, x.code, x.shortCode, x.externalId, x.vehicleNumber
+      x.sideNumber, // <— NEW
+      x.number, x.carNumber, x.fleetNumber, x.callSign, x.code, x.shortCode, x.externalId, x.vehicleNumber
     ];
-
-    let plate = plateCands.find(v => typeof v === 'string' && v.trim().length >= 4) || null;
-    let number = numberCands.find(v => typeof v === 'string' && v.trim().length >= 3) || null;
-
-    // Try nested objects that often hold these
+    // look also in common nested objects
     for (const k of ['vehicle','car','properties','details']) {
       const o = x[k];
       if (!o || typeof o !== 'object') continue;
-      for (const f of ['licensePlate','plate','plates','plateNumber','registration','registrationNumber','numberPlate']) {
-        if (!plate && typeof o[f] === 'string') plate = o[f];
-      }
-      for (const f of ['number','carNumber','sideNumber','fleetNumber','callSign','code','shortCode','externalId','vehicleNumber']) {
-        if (!number && typeof o[f] === 'string') number = o[f];
-      }
+      plateCands.push(o.regPlate, o.licensePlate, o.plate, o.plateNumber, o.registration, o.registrationNumber);
+      numberCands.push(o.sideNumber, o.number, o.carNumber, o.fleetNumber, o.code);
     }
-
-    // Last resort: try to guess from name/label/title/description
-    const g = guessFromStrings(x.name, x.title, x.label, x.description);
-    if (!plate && g.plate) plate = g.plate;
-    if (!number && g.number) number = g.number;
-
-    plate = plate ? plate.toString().trim().toUpperCase() : null;
-    number = number ? number.toString().trim().toUpperCase() : null;
-
-    // If only one exists but looks like the other, reuse it
-    if (!number && plate && SIDE_RE.test(plate)) number = plate.replace(/\s+/g,'');
-    if (!plate && number && REG_RE.test(number)) plate = number;
-
-    return { plate, number };
+    const plate = plateCands.find(v => typeof v === 'string' && v.trim().length >= 4) || null;
+    const number = numberCands.find(v => (typeof v === 'string' || typeof v === 'number') && String(v).trim().length >= 3) || null;
+    return { plate: plate ? String(plate).trim().toUpperCase() : null,
+             number: number != null ? String(number).trim().toUpperCase() : null };
   }
 
   function pickModelMeta(x) {
     const id = x.modelId ?? x.carModelId ?? x.model?.id ?? x.carModel?.id;
     if (id != null && modelById.has(Number(id))) return modelById.get(Number(id));
     return { name: x.modelName || x.name || x.model || x.vehicleModel || 'Vehicle', electric: !!(x.electric ?? x.isElectric), maxFuel: null };
-    }
+  }
 
   function pickPct(x, isEv) {
     const norm = v => (typeof v === 'number' ? (v <= 1 && v >= 0 ? v*100 : v) : undefined);
+    // From your sample: x.fuel is already a percentage (75.0)
     let batt = norm(x.battery ?? x.batteryLevel ?? x.batteryPercent ?? x.soc ?? x.SoC ?? x.charge);
-    let fuel = norm(x.fuel ?? x.fuelLevel ?? x.fuelPercent);
+    let fuel = norm(x.fuel); // <— fuel percent
     if (isEv) return (typeof batt === 'number') ? Math.max(0, Math.min(100, batt)) : (typeof fuel === 'number' ? Math.max(0, Math.min(100, fuel)) : null);
     return (typeof fuel === 'number') ? Math.max(0, Math.min(100, fuel)) : (typeof batt === 'number' ? Math.max(0, Math.min(100, batt)) : null);
   }
 
   function pickRangeKm(x) {
-    const c = [x.rangeKm, x.range_km, x.estimatedRangeKm, x.estimatedRange, x.remainingRange, x.distanceAvailable, x.distanceLeft, x.kmLeft, x.distanceKm];
+    // From your sample: x.range is km
+    const c = [x.range, x.rangeKm, x.range_km, x.estimatedRangeKm, x.estimatedRange, x.remainingRange, x.distanceAvailable, x.distanceLeft, x.kmLeft, x.distanceKm];
     for (const v of c) { const n = toNum(v); if (num(n)) return Math.round(n); }
     const m = toNum(x.rangeMeters ?? x.distanceMeters);
     return num(m) ? Math.round(m/1000) : null;
@@ -169,12 +138,19 @@ export async function handler(event) {
           const id = item.id ?? item.vehicleId ?? item.carId ?? item.code ?? null;
           const img = item.image || item.imageUrl || item.photoUrl || item.picture || item.pictureUrl || null;
 
+          // Pass through textual location if provided (nice for popup)
+          const address = typeof item.location === 'string' ? item.location : null;
+
+          // Optionally skip unavailable cars; for now include all:
+          // if (item.available === false) continue;
+
           acc.push({
             id, lat: pos.lat, lng: pos.lng,
             model: meta.name, isElectric: !!meta.electric, maxFuel: meta.maxFuel,
-            plate: plate || null,          // <- registration like "KK 11600"
-            number: number || null,        // <- fleet/side number like "7805"
-            pct, rangeKm, img
+            plate: plate,                 // registration (e.g., "KR4SE75")
+            number: number,               // fleet/side number (e.g., "3125")
+            pct, rangeKm, img,
+            address
           });
         }
       }
@@ -190,7 +166,7 @@ export async function handler(event) {
   // de-dup
   const seen = new Set();
   out = out.filter(v => {
-    const key = `${v.plate || v.number || ''}|${v.model || ''}|${v.lat.toFixed(6)}|${v.lng.toFixed(6)}`;
+    const key = `${v.plate || v.number || ''}|${v.model || ''}|${v.lat}|${v.lng}`;
     if (seen.has(key)) return false; seen.add(key); return true;
   });
 
