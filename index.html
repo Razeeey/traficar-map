@@ -4,122 +4,59 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>TrafiCar Live Map</title>
-
-  <!-- Leaflet & MarkerCluster -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-
-  <!-- Nice font (optional) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap">
-
   <style>
-    :root{
-      --bg:#0f0f12; --panel:#17171c; --panel2:#1f1f26; --text:#f4f4f6; --muted:#a7a7b4; --accent:#7b4bff; --accent2:#a07bff; --ok:#3ddc84;
-      --shadow: 0 10px 30px rgba(0,0,0,.35); --radius:20px;
-    }
-    *{box-sizing:border-box}
-    body{margin:0; background:linear-gradient(180deg,#0b0b0e,#141419); color:var(--text); font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
-    #map{position:fixed; inset:0}
-    .topbar{
-      position:fixed; inset:16px 16px auto 16px; z-index:1000; display:flex; gap:12px; align-items:center; flex-wrap:wrap;
-      background:rgba(23,23,28,.75); backdrop-filter:saturate(1.2) blur(8px);
-      border:1px solid rgba(255,255,255,.06); border-radius:var(--radius); padding:10px 12px; box-shadow:var(--shadow);
-    }
-    .brand{display:flex; align-items:center; gap:10px; font-weight:700; padding:8px 12px; background:linear-gradient(135deg,var(--accent),var(--accent2));
-      border-radius:14px; color:white; letter-spacing:.2px;}
-    .pill, select, button{background:var(--panel2); color:var(--text); border:1px solid rgba(255,255,255,.06);
-      padding:9px 12px; border-radius:14px; font-weight:600; cursor:pointer}
-    .pill:hover, select:hover, button:hover{ border-color:rgba(255,255,255,.14)}
-    .city{min-width:150px}
-    .panel{
-      position:fixed; right:16px; top:86px; z-index:999; width:340px; max-width:calc(100% - 32px);
-      background:rgba(23,23,28,.92); border:1px solid rgba(255,255,255,.06); border-radius:var(--radius);
-      padding:14px; box-shadow:var(--shadow); display:none;
-    }
-    .panel h3{margin:6px 0 10px}
-    .row{display:flex; gap:10px; margin-bottom:10px}
-    .row label{font-size:.9rem; color:var(--muted)}
-    .row input[type="range"]{width:100%}
-    .footer{
-      position:fixed; left:16px; bottom:16px; z-index:999; display:flex; gap:10px; align-items:center;
-      padding:8px 10px; background:rgba(23,23,28,.8); border:1px solid rgba(255,255,255,.06); border-radius:12px;
-      box-shadow:var(--shadow); font-size:.9rem; color:var(--muted)
-    }
-    .badge{background:var(--panel2); padding:4px 8px; border-radius:999px; font-weight:700}
-    .dot{width:10px; height:10px; border-radius:50%}
-    .dot.ok{background:var(--ok)} .dot.low{background:#ffb020} .dot.crit{background:#ff6b6b}
-    .spinner{display:inline-block; width:14px; height:14px; border:2px solid #ffffff30; border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite}
-    @keyframes spin{to{transform:rotate(360deg)}}
-    .btn-cta{background:linear-gradient(135deg,var(--accent),var(--accent2)); color:white; border:none}
-    .spacer{flex:1}
+    :root{ --bg:#0f0f12; --panel:#17171c; --panel2:#1f1f26; --text:#f4f4f6; --muted:#a7a7b4; --accent:#7b4bff; --accent2:#a07bff; --ok:#3ddc84; --shadow:0 10px 30px rgba(0,0,0,.35); --radius:20px;}
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#0b0b0e,#141419);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+    #map{position:fixed;inset:0}
+    .topbar{position:fixed;inset:16px 16px auto 16px;z-index:1000;display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:rgba(23,23,28,.75);backdrop-filter:saturate(1.2) blur(8px);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);padding:10px 12px;box-shadow:var(--shadow)}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:700;padding:8px 12px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:14px;color:white}
+    .pill,select,button{background:var(--panel2);color:var(--text);border:1px solid rgba(255,255,255,.06);padding:9px 12px;border-radius:14px;font-weight:600;cursor:pointer}
+    .pill:hover,select:hover,button:hover{border-color:rgba(255,255,255,.14)} .city{min-width:150px}
+    .panel{position:fixed;right:16px;top:86px;z-index:999;width:360px;max-width:calc(100% - 32px);background:rgba(23,23,28,.92);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);display:none}
+    .panel h3{margin:6px 0 10px}.row{display:flex;gap:10px;margin-bottom:10px}.row label{font-size:.9rem;color:var(--muted)}.row input[type="range"]{width:100%}
+    .footer{position:fixed;left:16px;bottom:16px;z-index:999;display:flex;gap:10px;align-items:center;padding:8px 10px;background:rgba(23,23,28,.8);border:1px solid rgba(255,255,255,.06);border-radius:12px;box-shadow:var(--shadow);font-size:.9rem;color:var(--muted)}
+    .badge{background:var(--panel2);padding:4px 8px;border-radius:999px;font-weight:700}
+    .dot{width:10px;height:10px;border-radius:50%}.dot.ok{background:var(--ok)}.dot.low{background:#ffb020}.dot.crit{background:#ff6b6b}
+    .spinner{display:inline-block;width:14px;height:14px;border:2px solid #ffffff30;border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}} .btn-cta{background:linear-gradient(135deg,var(--accent),var(--accent2));color:white;border:none} .spacer{flex:1}
   </style>
 </head>
 <body>
   <div id="map" role="application" aria-label="Traficar cars map"></div>
-
   <div class="topbar">
     <div class="brand">🚗 TrafiCar Radar</div>
-
     <select id="city" class="city" title="Select city">
-      <option value="krakow" selected>Kraków</option>
-      <option value="warszawa">Warszawa</option>
-      <option value="wroclaw">Wrocław</option>
-      <option value="poznan">Poznań</option>
-      <option value="trojmiasto">Trójmiasto</option>
-      <option value="slask">Śląsk</option>
-      <option value="lublin">Lublin</option>
-      <option value="lodz">Łódź</option>
-      <option value="szczecin">Szczecin</option>
-      <option value="rzeszow">Rzeszów</option>
+      <option value="krakow" selected>Kraków</option><option value="warszawa">Warszawa</option><option value="wroclaw">Wrocław</option>
+      <option value="poznan">Poznań</option><option value="trojmiasto">Trójmiasto</option><option value="slask">Śląsk</option>
+      <option value="lublin">Lublin</option><option value="lodz">Łódź</option><option value="szczecin">Szczecin</option><option value="rzeszow">Rzeszów</option>
     </select>
-
     <button id="filterBtn" class="pill">Filter ▾</button>
     <button id="refreshBtn" class="pill">Refresh</button>
     <div class="spacer"></div>
     <button id="locateBtn" class="pill">📍 My location</button>
     <button id="themeBtn" class="pill">🌓</button>
   </div>
-
   <div id="filterPanel" class="panel" aria-hidden="true">
     <h3>Filters</h3>
-    <div class="row">
-      <label style="flex:1">
-        Model
-        <select id="modelSelect" style="width:100%">
-          <option value="">All models</option>
-          <option>RENAULT Clio</option>
-          <option>DACIA Sandero</option>
-          <option>DACIA Spring</option>
-          <option>RENAULT Zoe</option>
-          <option>RENAULT Arkana</option>
-          <option>RENAULT Megane E-Tech</option>
-          <option>DACIA Dokker</option>
-          <option>RENAULT Master</option>
-          <option>RENAULT Express</option>
-        </select>
-      </label>
-    </div>
-    <div class="row">
-      <label style="flex:1">
-        Min fuel / charge: <span id="fuelVal">0%</span>
-        <input id="fuelRange" type="range" min="0" max="100" step="5" value="0">
-      </label>
-    </div>
-    <div class="row">
-      <label style="flex:1">
-        Radius from map center (<span id="radiusVal">0</span> m; 0 = off)
-        <input id="radiusRange" type="range" min="0" max="5000" step="100" value="0">
-      </label>
-    </div>
-    <div class="row" style="justify-content:flex-end;">
-      <button id="applyFilters" class="btn-cta">Apply</button>
-    </div>
+    <div class="row"><label style="flex:1">Model
+      <select id="modelSelect" style="width:100%"><option value="">All models</option></select>
+    </label></div>
+    <div class="row"><label style="flex:1">EV only
+      <input id="evOnly" type="checkbox">
+    </label></div>
+    <div class="row"><label style="flex:1">Min fuel/charge: <span id="fuelVal">0%</span>
+      <input id="fuelRange" type="range" min="0" max="100" step="5" value="0"></label></div>
+    <div class="row"><label style="flex:1">Radius from map center (<span id="radiusVal">0</span> m; 0 = off)
+      <input id="radiusRange" type="range" min="0" max="5000" step="100" value="0"></label></div>
+    <div class="row" style="justify-content:flex-end;"><button id="applyFilters" class="btn-cta">Apply</button></div>
   </div>
-
   <div class="footer">
     <span id="status"><span class="spinner"></span> Loading…</span>
     <span class="badge" id="count">0 cars</span>
@@ -133,14 +70,8 @@
 
 <script>
 (function(){
-  // Use the auto-discover proxy function
   const API = '/.netlify/functions/traficar-auto';
-
-  // City centers
-  const centers = {
-    krakow:[50.0614,19.9383], warszawa:[52.2297,21.0122], wroclaw:[51.1079,17.0385], poznan:[52.4064,16.9252],
-    trojmiasto:[54.3722,18.6383], slask:[50.2649,19.0238], lublin:[51.2465,22.5684], lodz:[51.7592,19.4550], szczecin:[53.4285,14.5528], rzeszow:[50.0413,21.9990]
-  };
+  const centers = { krakow:[50.0614,19.9383], warszawa:[52.2297,21.0122], wroclaw:[51.1079,17.0385], poznan:[52.4064,16.9252], trojmiasto:[54.3722,18.6383], slask:[50.2649,19.0238], lublin:[51.2465,22.5684], lodz:[51.7592,19.4550], szczecin:[53.4285,14.5528], rzeszow:[50.0413,21.9990] };
 
   // Map
   const map = L.map('map', { zoomControl:false }).setView(centers.krakow, 13);
@@ -150,95 +81,89 @@
   map.addLayer(cluster);
 
   // UI refs
-  const $ = (id)=>document.getElementById(id);
+  const $ = id => document.getElementById(id);
   const city=$('city'), filterBtn=$('filterBtn'), panel=$('filterPanel'), refreshBtn=$('refreshBtn'), locateBtn=$('locateBtn'), themeBtn=$('themeBtn');
-  const fuel=$('fuelRange'), fuelVal=$('fuelVal'), radius=$('radiusRange'), radiusVal=$('radiusVal'), model=$('modelSelect'), apply=$('applyFilters');
+  const fuel=$('fuelRange'), fuelVal=$('fuelVal'), radius=$('radiusRange'), radiusVal=$('radiusVal'), modelSel=$('modelSelect'), evOnly=$('evOnly'), apply=$('applyFilters');
   const status=$('status'), count=$('count');
-  let circle=null, timer=null;
+  let circle=null, timer=null, myLoc=null, lastData=[];
 
   // UI handlers
-  filterBtn.onclick = ()=>{ panel.style.display = (panel.style.display==='block'?'none':'block'); panel.setAttribute('aria-hidden', panel.style.display!=='block'); };
-  apply.onclick = ()=>{ panel.style.display='none'; load(); };
-  fuel.oninput = ()=> fuelVal.textContent = fuel.value+'%';
-  radius.oninput = ()=>{ radiusVal.textContent = radius.value; drawRadius(); };
-  city.onchange = ()=>{ map.setView(centers[city.value]||centers.krakow,13); load(true); };
-  refreshBtn.onclick = ()=> load();
-  locateBtn.onclick = ()=> {
-    if(!navigator.geolocation) return alert('Geolocation not supported');
-    navigator.geolocation.getCurrentPosition(p=>{ map.setView([p.coords.latitude,p.coords.longitude],14); drawRadius(); }, ()=> alert('Could not get your location'));
-  };
-  themeBtn.onclick = ()=> {
-    if(document.body.dataset.theme==='light'){ document.body.dataset.theme=''; tiles.setUrl('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'); }
-    else { document.body.dataset.theme='light'; tiles.setUrl('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'); }
-  };
+  filterBtn.onclick=()=>{ panel.style.display=(panel.style.display==='block'?'none':'block'); panel.setAttribute('aria-hidden', panel.style.display!=='block'); };
+  apply.onclick=()=>{ panel.style.display='none'; render(lastData,true); };
+  fuel.oninput=()=> fuelVal.textContent=fuel.value+'%';
+  radius.oninput=()=>{ radiusVal.textContent=radius.value; drawRadius(); render(lastData,true); };
+  city.onchange=()=>{ map.setView(centers[city.value]||centers.krakow,13); render(lastData,true); };
+  refreshBtn.onclick=()=> load();
+  locateBtn.onclick=()=>{ if(!navigator.geolocation) return alert('Geolocation not supported');
+    navigator.geolocation.getCurrentPosition(p=>{ myLoc=[p.coords.latitude,p.coords.longitude]; map.setView(myLoc,14); drawRadius(); render(lastData,true); },()=> alert('Could not get your location')); };
+  themeBtn.onclick=()=>{ if(document.body.dataset.theme==='light'){ document.body.dataset.theme=''; tiles.setUrl('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'); } else { document.body.dataset.theme='light'; tiles.setUrl('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'); } };
 
-  function drawRadius(){
-    const r=+radius.value;
-    if(circle){ map.removeLayer(circle); circle=null; }
-    if(r>0){ circle = L.circle(map.getCenter(), {radius:r, color:'#7b4bff', weight:1, fillOpacity:0.05}).addTo(map); }
-  }
-
+  function drawRadius(){ const r=+radius.value; if(circle){ map.removeLayer(circle); circle=null; } if(r>0){ circle=L.circle(map.getCenter(),{radius:r,color:'#7b4bff',weight:1,fillOpacity:0.05}); circle.addTo(map);} }
   function color(p){ if(p>=50) return '#3ddc84'; if(p>=20) return '#ffb020'; return '#ff6b6b'; }
+  function km(d){ return (d/1000).toFixed(1); }
+  function hav(a,b){ const toRad=x=>x*Math.PI/180, R=6371000, dLat=toRad(b[0]-a[0]), dLon=toRad(b[1]-a[1]);
+    const A=Math.sin(dLat/2)**2+Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2; return R*2*Math.atan2(Math.sqrt(A),Math.sqrt(1-A)); }
 
-  // Normalize many possible response shapes to {lat,lng,model,plate,pct}
-  function norm(x){
-    const lat = x.lat ?? x.latitude ?? (x.latE6 != null ? x.latE6/1e6 :
-              (x.location && (x.location.lat ?? x.location.latitude)) ??
-              (x.geometry && x.geometry.coordinates && x.geometry.coordinates[1]));
-    const lng = x.lng ?? x.lon ?? x.longitude ?? (x.lonE6 != null ? x.lonE6/1e6 :
-              (x.location && (x.location.lng ?? x.location.lon ?? x.location.longitude)) ??
-              (x.geometry && x.geometry.coordinates && x.geometry.coordinates[0]));
-    const model = x.model || x.name || x.vehicleModel || (x.properties && x.properties.model) || 'Vehicle';
-    const plate = x.plate || x.registration || x.license || x.identifier || (x.properties && x.properties.plate) || '';
-    const fuel  = x.fuel || x.fuelLevel || x.fuelPercent || (x.properties && (x.properties.fuel || x.properties.fuelLevel));
-    const batt  = x.battery || x.batteryLevel || x.batteryPercent || (x.properties && (x.properties.battery || x.properties.batteryLevel));
-    const pct = typeof batt === 'number' ? batt : (typeof fuel === 'number' ? fuel : null);
-    return { lat, lng, model, plate, pct };
+  // build models dropdown dynamically from data
+  function buildModelOptions(data){
+    const names = Array.from(new Set(data.map(v => v.model).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pl'));
+    const cur = modelSel.value;
+    modelSel.innerHTML = '<option value="">All models</option>' + names.map(n=>`<option>${n}</option>`).join('');
+    if (names.includes(cur)) modelSel.value = cur;
   }
 
-  async function load(force=false){
+  function render(data, fromFilter=false){
+    lastData = Array.isArray(data) ? data : [];
+    if (!fromFilter) buildModelOptions(lastData);
+
+    const center = myLoc || centers[city.value] || centers.krakow;
+    const r = +radius.value, min = +fuel.value, m = modelSel.value.trim(), ev = evOnly.checked;
+
+    cluster.clearLayers(); let n=0;
+    for(const v of lastData){
+      if (!v || typeof v.lat !== 'number' || typeof v.lng !== 'number') continue;
+      if (m && v.model !== m) continue;
+      if (ev && !v.isElectric) continue;
+      if (min && (v.pct==null || v.pct < min)) continue;
+      if (r>0){ const d = hav(center, [v.lat, v.lng]); if (d > r) continue; }
+
+      const dMeters = hav(center, [v.lat, v.lng]);
+      const pctLabel = (v.pct==null ? '—' : (Math.round(v.pct)+'%'));
+      const icon = L.divIcon({ className:'mk', html:`<div style="width:22px;height:22px;border-radius:50%;background:${color(v.pct??100)};border:2px solid #111;box-shadow:0 0 0 2px rgba(0,0,0,.25)"></div>` });
+      const marker = L.marker([v.lat, v.lng], { icon });
+
+      const fuelKind = v.isElectric ? 'Battery' : 'Fuel';
+      marker.bindPopup(`
+        <div style="min-width:240px">
+          <div style="font-weight:700;margin-bottom:6px">${v.model || 'Vehicle'}</div>
+          <div style="color:#a7a7b4">Plate: <b>${v.plate || '—'}</b></div>
+          <div style="color:#a7a7b4">${fuelKind}: <b>${pctLabel}</b></div>
+          <div style="color:#a7a7b4">Distance from center: <b>${km(dMeters)} km</b></div>
+        </div>
+      `);
+
+      cluster.addLayer(marker); n++;
+    }
+
+    count.textContent = `${n} cars`;
+    status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+  }
+
+  async function load(){
     try{
       status.innerHTML = '<span class="spinner"></span> Loading…';
-      const res = await fetch(API + '?city=' + encodeURIComponent(city.value));
-      if(!res.ok){
-        const txt = await res.text().catch(()=> '');
-        status.textContent = 'Proxy error: ' + res.status + (txt?(' — '+txt.slice(0,120)):'');
-        return;
-      }
+      const res = await fetch(API); // server tries many zones; you can add ?zoneId=1 to force
+      if(!res.ok){ const t=await res.text().catch(()=> ''); status.textContent='Proxy error '+res.status+(t?(' — '+t.slice(0,120)):''); return; }
       const data = await res.json();
-      const list = Array.isArray(data) ? data :
-        (data && data.features ? data.features.map(f=>Object.assign({}, f.properties, { geometry:f.geometry })) : []);
-
-      const center = map.getCenter(), r = +radius.value, min = +fuel.value, m = model.value.trim();
-      cluster.clearLayers(); let n = 0;
-
-      for(const item of list){
-        const v = norm(item); if(!(v.lat && v.lng)) continue;
-        if(m && (!v.model || v.model !== m)) continue;
-        if(min && (v.pct==null || v.pct < min)) continue;
-        if(r>0){ const d = map.distance(center, L.latLng(v.lat, v.lng)); if(d>r) continue; }
-
-        const icon = L.divIcon({ className:'mk', html:`<div style="width:22px;height:22px;border-radius:50%;background:${color(v.pct??100)};border:2px solid #111;box-shadow:0 0 0 2px rgba(0,0,0,.25)"></div>` });
-        const marker = L.marker([v.lat, v.lng], { icon });
-        const pctLabel = (v.pct==null ? '—' : (Math.round(v.pct)+'%'));
-        marker.bindPopup(`<div style="min-width:220px"><div style="font-weight:700;margin-bottom:6px">${v.model}</div><div style="color:#a7a7b4">Plate: <b>${v.plate||'—'}</b></div><div style="color:#a7a7b4">Fuel/Charge: <b>${pctLabel}</b></div></div>`);
-        cluster.addLayer(marker); n++;
-      }
-
-      count.textContent = n + ' cars';
-      status.textContent = 'Updated ' + new Date().toLocaleTimeString();
-      if(force) drawRadius();
-
-      if(timer) clearTimeout(timer);
+      render(data);
+      if (timer) clearTimeout(timer);
       timer = setTimeout(load, 20000);
-    }catch(e){
-      console.error(e);
-      status.textContent = 'Could not load data';
-      if(timer) clearTimeout(timer);
-    }
+    }catch(e){ console.error(e); status.textContent='Could not load data'; if(timer) clearTimeout(timer); }
   }
 
-  load(true);
+  fuelVal.textContent = fuel.value + '%';
+  radiusVal.textContent = radius.value;
+  load();
 })();
 </script>
 </body>
