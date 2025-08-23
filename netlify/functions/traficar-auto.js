@@ -1,8 +1,19 @@
-// Traficar proxy: maps regPlate (registration), sideNumber (fleet #), range (km).
+// Traficar proxy: supports ?city=..., fetches all zones, geo-filters to that city,
+// and maps regPlate (registration) + sideNumber (fleet badge) + range + fuel%.
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
-  const zoneParam = event.queryStringParameters?.zoneId;
+  const cityParam = (event.queryStringParameters?.city || '').toLowerCase().trim();
+  const zoneParam = event.queryStringParameters?.zoneId; // optional override for testing
   const zoneIds = zoneParam ? [Number(zoneParam)] : Array.from({ length: 15 }, (_, i) => i + 1);
+
+  // city centers (same keys as your dropdown)
+  const centers = {
+    krakow:[50.0614,19.9383], warszawa:[52.2297,21.0122], wroclaw:[51.1079,17.0385],
+    poznan:[52.4064,16.9252], trojmiasto:[54.3722,18.6383], slask:[50.2649,19.0238],
+    lublin:[51.2465,22.5684], lodz:[51.7592,19.4550], szczecin:[53.4285,14.5528], rzeszow:[50.0413,21.9990]
+  };
+  const center = centers[cityParam] || null;
+  const RADIUS_KM = 120; // generous metro radius
 
   const headers = { accept: 'application/json', 'user-agent': 'Mozilla/5.0', referer: `${origin}/` };
 
@@ -25,8 +36,14 @@ export async function handler(event) {
 
   // ---- utils ----
   const num = n => typeof n === 'number' && isFinite(n);
-  const toNum = v => typeof v === 'string' ? parseFloat(v) : v;
+  const toNum = v => (typeof v === 'string' ? parseFloat(v) : v);
   const fromE6Maybe = v => { const n = toNum(v); if (!num(n)) return undefined; return Math.abs(n) > 1000 ? n/1e6 : n; };
+  const toRad = d => d * Math.PI / 180;
+  const haversineKm = (a,b)=> {
+    const R=6371, dLat=toRad(b[0]-a[0]), dLon=toRad(b[1]-a[1]);
+    const A=Math.sin(dLat/2)**2+Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2;
+    return R*2*Math.atan2(Math.sqrt(A),Math.sqrt(1-A));
+  };
 
   function extractLatLng(obj, depth = 0) {
     if (!obj || typeof obj !== 'object' || depth > 6) return null;
@@ -56,123 +73,83 @@ export async function handler(event) {
     return null;
   }
 
-  // ---- registration (plate) & fleet/side number (number) ----
-  function pickPlateAndNumber(x) {
-    // From your sample: regPlate & sideNumber are the correct fields
-    const plateCands = [
-      x.regPlate, // <— NEW
-      x.licensePlate, x.plate, x.plates, x.plateNumber,
-      x.registration, x.registrationNumber, x.vehicleRegistrationNumber, x.numberPlate
-    ];
-    const numberCands = [
-      x.sideNumber, // <— NEW
-      x.number, x.carNumber, x.fleetNumber, x.callSign, x.code, x.shortCode, x.externalId, x.vehicleNumber
-    ];
-    // look also in common nested objects
-    for (const k of ['vehicle','car','properties','details']) {
-      const o = x[k];
-      if (!o || typeof o !== 'object') continue;
-      plateCands.push(o.regPlate, o.licensePlate, o.plate, o.plateNumber, o.registration, o.registrationNumber);
-      numberCands.push(o.sideNumber, o.number, o.carNumber, o.fleetNumber, o.code);
-    }
-    const plate = plateCands.find(v => typeof v === 'string' && v.trim().length >= 4) || null;
-    const number = numberCands.find(v => (typeof v === 'string' || typeof v === 'number') && String(v).trim().length >= 3) || null;
-    return { plate: plate ? String(plate).trim().toUpperCase() : null,
-             number: number != null ? String(number).trim().toUpperCase() : null };
-  }
-
   function pickModelMeta(x) {
     const id = x.modelId ?? x.carModelId ?? x.model?.id ?? x.carModel?.id;
     if (id != null && modelById.has(Number(id))) return modelById.get(Number(id));
     return { name: x.modelName || x.name || x.model || x.vehicleModel || 'Vehicle', electric: !!(x.electric ?? x.isElectric), maxFuel: null };
   }
 
-  function pickPct(x, isEv) {
-    const norm = v => (typeof v === 'number' ? (v <= 1 && v >= 0 ? v*100 : v) : undefined);
-    // From your sample: x.fuel is already a percentage (75.0)
-    let batt = norm(x.battery ?? x.batteryLevel ?? x.batteryPercent ?? x.soc ?? x.SoC ?? x.charge);
-    let fuel = norm(x.fuel); // <— fuel percent
-    if (isEv) return (typeof batt === 'number') ? Math.max(0, Math.min(100, batt)) : (typeof fuel === 'number' ? Math.max(0, Math.min(100, fuel)) : null);
-    return (typeof fuel === 'number') ? Math.max(0, Math.min(100, fuel)) : (typeof batt === 'number' ? Math.max(0, Math.min(100, batt)) : null);
+  function pickPlateNumberRangeFuel(x) {
+    // from your sample format:
+    const plate = x.regPlate ? String(x.regPlate).trim().toUpperCase() : null;
+    const number = (x.sideNumber != null) ? String(x.sideNumber).trim().toUpperCase() : null;
+    const rangeKm = toNum(x.range); // already km in sample
+    // fuel is percent in sample; also support other keys
+    const fuelPct = (typeof x.fuel === 'number') ? x.fuel
+                   : (typeof x.fuelPercent === 'number') ? x.fuelPercent
+                   : (typeof x.fuelLevel === 'number') ? x.fuelLevel
+                   : (typeof x.battery === 'number') ? x.battery
+                   : (typeof x.batteryPercent === 'number') ? x.batteryPercent
+                   : null;
+    return { plate: plate || null, number: number || null, rangeKm: num(rangeKm) ? Math.round(rangeKm) : null, pct: num(fuelPct) ? Math.round(fuelPct) : null };
   }
 
-  function pickRangeKm(x) {
-    // From your sample: x.range is km
-    const c = [x.range, x.rangeKm, x.range_km, x.estimatedRangeKm, x.estimatedRange, x.remainingRange, x.distanceAvailable, x.distanceLeft, x.kmLeft, x.distanceKm];
-    for (const v of c) { const n = toNum(v); if (num(n)) return Math.round(n); }
-    const m = toNum(x.rangeMeters ?? x.distanceMeters);
-    return num(m) ? Math.round(m/1000) : null;
-  }
-
-  // ---- fetch cars ----
+  // ---- fetch all zones concurrently ----
   const urls = zoneIds.flatMap(id => [
     `${origin}/api/v1/cars?zoneId=${id}`,
     `${origin}/api/v1/cars?zoneId=${id}&lastUpdate=0`
   ]);
+  const results = await Promise.allSettled(urls.map(u =>
+    fetch(u, { headers }).then(r => r.ok ? r.json() : null).catch(() => null)
+  ));
 
-  const tried = [];
-  let out = [];
-  for (const u of urls) {
-    tried.push(u);
-    try {
-      const r = await fetch(u, { headers });
-      if (!r.ok) continue;
-      const data = await r.json();
+  // ---- parse and collect ----
+  const vehicles = [];
+  for (const res of results) {
+    const data = res.value;
+    if (!data) continue;
+    const list =
+      Array.isArray(data) ? data :
+      Array.isArray(data.cars) ? data.cars :
+      (data && typeof data === 'object') ? Object.values(data).filter(v => v && typeof v === 'object') : [];
 
-      const arrays = [];
-      if (Array.isArray(data)) arrays.push(data);
-      if (data && Array.isArray(data.cars)) arrays.push(data.cars);
-      if (!arrays.length && data && typeof data === 'object') {
-        const vals = Object.values(data);
-        if (vals.length && vals.every(v => v && typeof v === 'object')) arrays.push(vals);
+    for (const item of list) {
+      const pos = extractLatLng(item);
+      if (!pos) continue;
+      // if city provided, keep only near that city
+      if (center) {
+        const d = haversineKm(center, [pos.lat, pos.lng]);
+        if (d > RADIUS_KM) continue;
       }
+      const meta = pickModelMeta(item);
+      const { plate, number, rangeKm, pct } = pickPlateNumberRangeFuel(item);
+      const img = item.image || item.imageUrl || item.photoUrl || item.picture || item.pictureUrl || null;
+      const id = item.id ?? item.vehicleId ?? item.carId ?? item.code ?? null;
+      const address = typeof item.location === 'string' ? item.location : null;
 
-      const acc = [];
-      for (const arr of arrays) {
-        for (const item of arr) {
-          const pos = extractLatLng(item); if (!pos) continue;
-          const meta = pickModelMeta(item);
-          const { plate, number } = pickPlateAndNumber(item);
-          const pct = pickPct(item, !!meta.electric);
-          const rangeKm = pickRangeKm(item);
-          const id = item.id ?? item.vehicleId ?? item.carId ?? item.code ?? null;
-          const img = item.image || item.imageUrl || item.photoUrl || item.picture || item.pictureUrl || null;
-
-          // Pass through textual location if provided (nice for popup)
-          const address = typeof item.location === 'string' ? item.location : null;
-
-          // Optionally skip unavailable cars; for now include all:
-          // if (item.available === false) continue;
-
-          acc.push({
-            id, lat: pos.lat, lng: pos.lng,
-            model: meta.name, isElectric: !!meta.electric, maxFuel: meta.maxFuel,
-            plate: plate,                 // registration (e.g., "KR4SE75")
-            number: number,               // fleet/side number (e.g., "3125")
-            pct, rangeKm, img,
-            address
-          });
-        }
-      }
-      if (acc.length) { out = acc; break; }
-    } catch {}
+      vehicles.push({
+        id, lat: pos.lat, lng: pos.lng,
+        model: meta.name, isElectric: !!meta.electric, maxFuel: meta.maxFuel,
+        plate, number, pct: num(pct) ? Math.max(0, Math.min(100, pct)) : null,
+        rangeKm, img, address
+      });
+    }
   }
 
-  if (!out.length) {
-    return { statusCode: 502, headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ error: 'No vehicles found', tried }) };
+  if (!vehicles.length) {
+    return { statusCode: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: '[]' };
   }
 
   // de-dup
   const seen = new Set();
-  out = out.filter(v => {
-    const key = `${v.plate || v.number || ''}|${v.model || ''}|${v.lat}|${v.lng}`;
+  const unique = vehicles.filter(v => {
+    const key = `${v.plate || v.number || v.id || ''}|${v.lat.toFixed(6)}|${v.lng.toFixed(6)}`;
     if (seen.has(key)) return false; seen.add(key); return true;
   });
 
   return {
     statusCode: 200,
     headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' },
-    body: JSON.stringify(out)
+    body: JSON.stringify(unique)
   };
 }
