@@ -1,22 +1,26 @@
-// Traficar proxy — sequential zone fetch, ?city filtering, proper fields.
+// Traficar proxy — faster + only-available-by-default + city filtering.
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
-  const cityParam = (event.queryStringParameters?.city || '').toLowerCase().trim();
-  const zoneParam = event.queryStringParameters?.zoneId; // optional: debug single zone
-  // try first 30 zones; adjust if needed
+  const q = event.queryStringParameters || {};
+  const cityParam = (q.city || '').toLowerCase().trim();
+  const zoneParam = q.zoneId;           // optional: debug a single zone
+  const includeAll = q.all === '1';     // add &all=1 to include rented/reserved
+
+  // Try first 30 zones; adjust if you find more exist.
   const zoneIds = zoneParam ? [Number(zoneParam)] : Array.from({ length: 30 }, (_, i) => i + 1);
 
+  // City centers (same keys as dropdown)
   const centers = {
     krakow:[50.0614,19.9383], warszawa:[52.2297,21.0122], wroclaw:[51.1079,17.0385],
     poznan:[52.4064,16.9252], trojmiasto:[54.3722,18.6383], slask:[50.2649,19.0238],
     lublin:[51.2465,22.5684], lodz:[51.7592,19.4550], szczecin:[53.4285,14.5528], rzeszow:[50.0413,21.9990]
   };
   const center = centers[cityParam] || null;
-  const CITY_RADIUS_KM = 150; // generous enough for metro areas
+  const CITY_RADIUS_KM = 120;
 
   const headers = { accept: 'application/json', 'user-agent': 'Mozilla/5.0', referer: `${origin}/` };
 
-  // ---- fetch models once (for maxFuel + EV flag) ----
+  // ---- models (id -> {name, electric, maxFuel}) ----
   const modelById = new Map();
   try {
     const r = await fetch(`${origin}/api/v1/car-models`, { headers });
@@ -63,54 +67,84 @@ export async function handler(event) {
     return { name: x.modelName || x.name || x.model || 'Vehicle', electric: !!(x.electric ?? x.isElectric), maxFuel: null };
   }
 
-  // regPlate = registration, sideNumber = fleet badge; range (km); fuel (%) per your sample
+  // Map fields from the API sample:
+  // regPlate = registration, sideNumber = fleet badge; range (km), fuel (%)
   const mapFields = x => ({
     plate: x.regPlate ? String(x.regPlate).trim().toUpperCase() : null,
     number: (x.sideNumber!=null) ? String(x.sideNumber).trim().toUpperCase() : null,
     rangeKm: num(toNum(x.range)) ? Math.round(toNum(x.range)) : null,
-    pct: num(toNum(x.fuel)) ? Math.round(toNum(x.fuel)) : null
+    pct: num(toNum(x.fuel)) ? Math.round(toNum(x.fuel)) : null,
+    address: typeof x.location === 'string' ? x.location : null
   });
 
-  // ---- sequential zone fetch (polite) ----
-  const vehicles = [];
-  for (const id of zoneIds) {
-    const url = `${origin}/api/v1/cars?zoneId=${id}&lastUpdate=0`;
+  // Availability: keep only cars that appear rentable
+  function isAvailable(x){
+    if ('available' in x) return x.available === true;
+    // If there's a status, whitelist common "free" values:
+    if (typeof x.status === 'string') {
+      const s = x.status.toUpperCase();
+      if (/(RENT|BUSY|RESERV|OCCUP|UNAVAIL)/.test(s)) return false;
+      if (/(FREE|AVAILABLE|READY)/.test(s)) return true;
+    }
+    if (x.reserved === true || x.isReserved === true) return false;
+    if (x.isRented === true || x.rented === true) return false;
+    if (x.reservationId != null) return false;
+    // default unknown → include (API often omits when free)
+    return true;
+  }
+
+  // ---- fetch with small concurrency (fast but polite) ----
+  async function fetchZone(zid){
+    const url = `${origin}/api/v1/cars?zoneId=${zid}&lastUpdate=0`;
     try {
       const r = await fetch(url, { headers });
-      if (!r.ok) { await new Promise(res=>setTimeout(res,120)); continue; }
+      if (!r.ok) return [];
       const data = await r.json();
       const list = Array.isArray(data) ? data : (Array.isArray(data.cars) ? data.cars : []);
+      const out = [];
       for (const item of list) {
+        if (!includeAll && !isAvailable(item)) continue;  // <-- filter rented/reserved
         const pos = extractLatLng(item); if (!pos) continue;
         if (center && haversineKm(center, [pos.lat,pos.lng]) > CITY_RADIUS_KM) continue;
 
         const meta = modelMeta(item);
-        const { plate, number, rangeKm, pct } = mapFields(item);
-        const address = typeof item.location === 'string' ? item.location : null;
+        const f = mapFields(item);
         const img = item.image || item.imageUrl || item.photoUrl || item.picture || item.pictureUrl || null;
         const carId = item.id ?? item.vehicleId ?? item.carId ?? item.code ?? null;
 
-        vehicles.push({
+        out.push({
           id: carId, lat: pos.lat, lng: pos.lng,
           model: meta.name, isElectric: !!meta.electric, maxFuel: meta.maxFuel,
-          plate, number, pct: num(pct)?Math.max(0,Math.min(100,pct)):null,
-          rangeKm, img, address
+          plate: f.plate, number: f.number, pct: num(f.pct)?Math.max(0,Math.min(100,f.pct)):null,
+          rangeKm: f.rangeKm, img, address: f.address
         });
       }
-      // small delay to avoid rate limiting
-      await new Promise(res=>setTimeout(res,120));
-    } catch {
-      await new Promise(res=>setTimeout(res,150));
-    }
+      return out;
+    } catch { return []; }
   }
 
-  if (!vehicles.length) {
+  // Concurrency pool
+  const limit = 6; // good balance: fast, avoids rate limits
+  let idx = 0;
+  const results = [];
+  async function worker(){
+    while (idx < zoneIds.length){
+      const my = idx++;                       // take next id
+      const arr = await fetchZone(zoneIds[my]);
+      results.push(...arr);
+      await new Promise(r => setTimeout(r, 80)); // tiny gap between hits
+    }
+  }
+  await Promise.all(Array(Math.min(limit, zoneIds.length)).fill(0).map(worker));
+
+  // No cars? return empty array
+  if (!results.length) {
     return { statusCode: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' }, body: '[]' };
   }
 
-  // de-dup
+  // De-dup
   const seen = new Set();
-  const unique = vehicles.filter(v => {
+  const unique = results.filter(v => {
     const key = `${v.plate||v.number||v.id||''}|${v.lat.toFixed(6)}|${v.lng.toFixed(6)}`;
     if (seen.has(key)) return false; seen.add(key); return true;
   });
