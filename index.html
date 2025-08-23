@@ -73,6 +73,11 @@ async function load(){
   }catch(e){
     console.error(e);
     document.getElementById('status').textContent = 'Could not load data (proxy)';
+try {
+  const t = await res.text();
+  document.getElementById('status').textContent += ' – ' + t.slice(0,120);
+  return; // stop
+} catch {}
   }
 }
 load();
