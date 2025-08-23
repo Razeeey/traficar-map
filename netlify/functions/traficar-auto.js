@@ -1,27 +1,27 @@
-// Traficar proxy — stable, city filter, conservative availability, small concurrency.
+// Traficar proxy — city filter + stable availability + numeric coords + small concurrency.
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
   const q = event.queryStringParameters || {};
   const cityParam = (q.city || '').toLowerCase().trim();
-  const zoneParam = q.zoneId;           // optional: debug a single zone
-  const includeAll = q.all === '1';     // &all=1 => include rented/reserved too
-  const strict = q.strict === '1';      // &strict=1 => require explicit "free"
+  const zoneParam = q.zoneId;          // optional: debug a single zone
+  const includeAll = q.all === '1';    // &all=1 -> include rented/reserved
+  const strict = q.strict === '1';     // &strict=1 -> require explicit "free/available"
 
-  // Try first 30 zones; you can raise if needed
+  // Probe first 30 zones (adjust if needed)
   const zoneIds = zoneParam ? [Number(zoneParam)] : Array.from({ length: 30 }, (_, i) => i + 1);
 
-  // City centers (same keys as dropdown)
+  // City centers (keys match the dropdown)
   const centers = {
     krakow:[50.0614,19.9383], warszawa:[52.2297,21.0122], wroclaw:[51.1079,17.0385],
     poznan:[52.4064,16.9252], trojmiasto:[54.3722,18.6383], slask:[50.2649,19.0238],
     lublin:[51.2465,22.5684], lodz:[51.7592,19.4550], szczecin:[53.4285,14.5528], rzeszow:[50.0413,21.9990]
   };
   const center = centers[cityParam] || null;
-  const CITY_RADIUS_KM = 120;
+  const CITY_RADIUS_KM = 180; // generous metro radius
 
   const headers = { accept: 'application/json', 'user-agent': 'Mozilla/5.0', referer: `${origin}/` };
 
-  // ---- models (id -> {name, electric, maxFuel}) ----
+  // ---- models (id -> meta) ----
   const modelById = new Map();
   try {
     const r = await fetch(`${origin}/api/v1/car-models`, { headers });
@@ -38,9 +38,9 @@ export async function handler(event) {
   } catch {}
 
   // ---- utils ----
-  const toNum = v => typeof v === 'string' ? parseFloat(v) : v;
-  const num = n => typeof n === 'number' && isFinite(n);
-  const fromE6Maybe = v => { const n = toNum(v); if (!num(n)) return undefined; return Math.abs(n) > 1000 ? n/1e6 : n; };
+  const toNum = v => (typeof v === 'string' ? parseFloat(v) : v);
+  const isNum = n => typeof n === 'number' && isFinite(n);
+  const fromE6Maybe = v => { const n = toNum(v); if (!isNum(n)) return undefined; return Math.abs(n) > 1000 ? n/1e6 : n; };
   const toRad = d => d*Math.PI/180;
   const haversineKm = (a,b)=>{const R=6371,dLat=toRad(b[0]-a[0]),dLon=toRad(b[1]-a[1]);const A=Math.sin(dLat/2)**2+Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(A),Math.sqrt(1-A));};
 
@@ -49,11 +49,11 @@ export async function handler(event) {
     let lat = obj.lat ?? obj.latitude ?? obj.latE6 ?? obj.latitudeE6;
     let lng = obj.lng ?? obj.lon ?? obj.longitude ?? obj.lonE6 ?? obj.longitudeE6;
     lat = fromE6Maybe(lat); lng = fromE6Maybe(lng);
-    if (num(lat) && num(lng)) return {lat,lng};
+    if (isNum(lat) && isNum(lng)) return {lat, lng};
     const g = obj.geometry;
     if (g && Array.isArray(g.coordinates) && g.coordinates.length>=2){
       const LON = toNum(g.coordinates[0]), LAT = toNum(g.coordinates[1]);
-      if (num(LAT)&&num(LON)) return {lat:LAT,lng:LON};
+      if (isNum(LAT)&&isNum(LON)) return {lat:LAT, lng:LON};
     }
     for (const k of ['location','position','gps','coords']){
       if (obj[k]){ const got = extractLatLng(obj[k], depth+1); if (got) return got; }
@@ -67,38 +67,44 @@ export async function handler(event) {
     return { name: x.modelName || x.name || x.model || 'Vehicle', electric: !!(x.electric ?? x.isElectric), maxFuel: null };
   }
 
-  // Map fields from API sample
+  // Field mapping from upstream
   const mapFields = x => ({
     plate: x.regPlate ? String(x.regPlate).trim().toUpperCase() : null,
     number: (x.sideNumber!=null) ? String(x.sideNumber).trim().toUpperCase() : null,
-    rangeKm: num(toNum(x.range)) ? Math.round(toNum(x.range)) : null,
-    pct: num(toNum(x.fuel)) ? Math.round(toNum(x.fuel)) : null,
-    address: typeof x.location === 'string' ? x.location : null
+    rangeKm: isNum(toNum(x.range)) ? Math.round(toNum(x.range)) : null,
+    pct: isNum(toNum(x.fuel)) ? Math.round(toNum(x.fuel)) : null,
+    address: typeof x.location === 'string' ? x.location : null,
+    raw: {
+      available: x.available,
+      reserved: x.reserved ?? x.isReserved,
+      rented: x.isRented ?? x.rented,
+      status: x.status ?? null
+    }
   });
 
-  // Availability
-  function looksBusy(x){
-    if (x.reserved === true || x.isReserved === true) return true;
-    if (x.isRented === true || x.rented === true) return true;
-    if (x.reservationId != null) return true;
-    if (typeof x.status === 'string') {
-      const s = x.status.toUpperCase();
+  // Availability logic
+  function looksBusy(raw){
+    if (!raw) return false;
+    if (raw.reserved === true) return true;
+    if (raw.rented === true) return true;
+    if (typeof raw.status === 'string') {
+      const s = raw.status.toUpperCase();
       if (/(RENT|RENTED|BUSY|RESERV|OCCUP|UNAVAIL|TAKEN|MAINT)/.test(s)) return true;
       if (/(FREE|AVAILABLE|READY)/.test(s)) return false;
     }
     return false;
   }
-  function isAvailable(x){
-    if (includeAll) return true;
-    if (strict) {                      // strict: only explicit free
-      if (x.available === true) return true;
-      if (typeof x.status === 'string' && /(FREE|AVAILABLE|READY)/i.test(x.status)) return true;
+  function isAvailable(raw){
+    if (!raw) return true;
+    if (strict) {
+      if (raw.available === true) return true;
+      if (typeof raw.status === 'string' && /(FREE|AVAILABLE|READY)/i.test(raw.status)) return true;
       return false;
     }
-    if (x.available === true) return true;   // conservative default
-    if (looksBusy(x)) return false;
-    if (x.available === false) return false; // conservative: don't trust false => treat as not free
-    return true;                             // unknown => include
+    if (raw.available === true) return true;
+    if (looksBusy(raw)) return false;
+    if (raw.available === false) return false; // conservative default
+    return true; // unknown -> include
   }
 
   async function fetchZone(zid){
@@ -110,27 +116,34 @@ export async function handler(event) {
       const list = Array.isArray(data) ? data : (Array.isArray(data.cars) ? data.cars : []);
       const out = [];
       for (const item of list) {
-        if (!isAvailable(item)) continue;
         const pos = extractLatLng(item); if (!pos) continue;
-        if (center && haversineKm(center, [pos.lat,pos.lng]) > CITY_RADIUS_KM) continue;
+        const lat = Number(pos.lat), lng = Number(pos.lng);
+        if (!isNum(lat) || !isNum(lng)) continue;
+        if (center && haversineKm(center, [lat, lng]) > CITY_RADIUS_KM) continue;
 
         const meta = modelMeta(item);
         const f = mapFields(item);
+
+        if (!includeAll && !isAvailable(f.raw)) continue;
+
         const img = item.image || item.imageUrl || item.photoUrl || item.picture || item.pictureUrl || null;
         const carId = item.id ?? item.vehicleId ?? item.carId ?? item.code ?? null;
 
         out.push({
-          id: carId, lat: pos.lat, lng: pos.lng,
+          id: carId, lat, lng,
           model: meta.name, isElectric: !!meta.electric, maxFuel: meta.maxFuel,
-          plate: f.plate, number: f.number, pct: num(f.pct)?Math.max(0,Math.min(100,f.pct)):null,
-          rangeKm: f.rangeKm, img, address: f.address
+          plate: f.plate, number: f.number, pct: isNum(f.pct)?Math.max(0,Math.min(100,f.pct)):null,
+          rangeKm: f.rangeKm, img, address: f.address,
+          // pass through raw flags for optional client filtering
+          available: f.raw.available ?? null,
+          status: f.raw.status ?? null
         });
       }
       return out;
     } catch { return []; }
   }
 
-  // Small concurrency pool to be fast but polite
+  // small concurrency (fast but polite)
   const limit = 6;
   let idx = 0;
   const results = [];
@@ -144,7 +157,7 @@ export async function handler(event) {
   }
   await Promise.all(Array(Math.min(limit, zoneIds.length)).fill(0).map(worker));
 
-  // De-dup
+  // de-dup
   const seen = new Set();
   const unique = results.filter(v => {
     const key = `${v.plate||v.number||v.id||''}|${v.lat.toFixed(6)}|${v.lng.toFixed(6)}`;
