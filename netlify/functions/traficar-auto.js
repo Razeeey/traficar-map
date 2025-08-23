@@ -1,9 +1,10 @@
-// Auto-discover a Traficar endpoint that returns VEHICLES with coordinates (not just carModels).
+// Smarter Traficar proxy: looks through MANY likely endpoints and
+// digs through nested objects to find coordinates, then normalizes to {lat, lng, ...}.
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
   const city = (event.queryStringParameters?.city || 'krakow').toLowerCase();
 
-  // Start with good guesses
+  // Good guesses (includes v1 endpoints and common variants)
   const guesses = [
     `/api/${city}/cars`,
     `/api/${city}/vehicles`,
@@ -16,85 +17,113 @@ export async function handler(event) {
     `/api/map/vehicles?city=${encodeURIComponent(city)}`,
     `/api/markers?city=${encodeURIComponent(city)}`,
     `/api/available-cars?city=${encodeURIComponent(city)}`,
-    `/api/cars/available?city=${encodeURIComponent(city)}`
+    `/api/cars/available?city=${encodeURIComponent(city)}`,
+    // v1 shapes:
+    `/api/v1/cars?city=${encodeURIComponent(city)}`,
+    `/api/v1/cars/nearby?city=${encodeURIComponent(city)}`,
+    `/api/v1/cars/search?city=${encodeURIComponent(city)}`,
+    `/api/v1/vehicles?city=${encodeURIComponent(city)}`,
+    `/api/v1/map/cars?city=${encodeURIComponent(city)}`,
   ];
 
-  // Try to read OpenAPI to add more paths if available
-  try {
-    const specRes = await fetch(`${origin}/api/openapi.json`, { headers: { accept: 'application/json' } });
-    if (specRes.ok) {
-      const spec = await specRes.json();
-      const paths = spec?.paths || {};
-      for (const p of Object.keys(paths)) {
-        const item = paths[p];
-        if (!item?.get) continue;
-        const lower = p.toLowerCase();
-        if (lower.includes('car') || lower.includes('vehicle') || lower.includes('marker')) {
-          let path = p.replace('{city}', city);
-          guesses.push(path);
-          // also try with ?city= if path doesn't already have it
-          if (!path.toLowerCase().includes('city=')) {
-            guesses.push(path + (path.includes('?') ? '&' : '?') + 'city=' + encodeURIComponent(city));
-          }
-        }
+  // --- helpers ---------------------------------------------------------------
+  const num = (n) => typeof n === 'number' && isFinite(n);
+  const fromE6 = (n) => (typeof n === 'number' ? n / 1e6 : n);
+
+  // Try to read lat/lng anywhere in the object (nested)
+  function extractLatLng(o) {
+    if (!o || typeof o !== 'object') return null;
+
+    // direct keys
+    const cand = {
+      lat: o.lat ?? o.latitude ?? o.Latitude ?? (o.latE6 != null ? fromE6(o.latE6) : undefined),
+      lng: o.lng ?? o.lon ?? o.longitude ?? o.Longitude ?? (o.lonE6 != null ? fromE6(o.lonE6) : undefined),
+    };
+    if (num(cand.lat) && num(cand.lng)) return { lat: cand.lat, lng: cand.lng };
+
+    // GeoJSON: geometry.coordinates [lng,lat]
+    if (o.geometry && Array.isArray(o.geometry.coordinates) && o.geometry.coordinates.length >= 2) {
+      const [LNG, LAT] = o.geometry.coordinates;
+      if (num(LAT) && num(LNG)) return { lat: LAT, lng: LNG };
+    }
+
+    // { location: { lat, lng }} or { position: { lat, lon }} or { gps: {...} }
+    const nests = [o.location, o.position, o.gps, o.coords];
+    for (const n of nests) {
+      const got = extractLatLng(n);
+      if (got) return got;
+    }
+
+    // Some APIs use x/y or lat/lon strings
+    if (o.y && o.x) {
+      const LAT = parseFloat(o.y), LNG = parseFloat(o.x);
+      if (num(LAT) && num(LNG)) return { lat: LAT, lng: LNG };
+    }
+
+    // Search shallow child objects/arrays (one level)
+    for (const v of Object.values(o)) {
+      if (v && typeof v === 'object') {
+        const got = extractLatLng(v);
+        if (got) return got;
       }
     }
-  } catch (_) {
-    // ignore – we'll just use the static guesses above
+    return null;
   }
 
-  // Helper to extract arrays and test for coordinates
-  const getCandidateArrays = (data) => {
-    const arrays = [];
-    if (Array.isArray(data)) arrays.push(data);
-    if (data && Array.isArray(data.cars)) arrays.push(data.cars);
-    if (data && Array.isArray(data.items)) arrays.push(data.items);
-    if (data && Array.isArray(data.results)) arrays.push(data.results);
-    if (data && Array.isArray(data.features)) {
-      arrays.push(data.features.map(f => ({ ...f.properties, geometry: f.geometry })));
+  // Get all arrays we might care about (a few levels deep)
+  function collectArrays(root, maxDepth = 3, out = [], seen = new Set()) {
+    if (maxDepth < 0 || !root || typeof root !== 'object') return out;
+    if (seen.has(root)) return out;
+    seen.add(root);
+
+    if (Array.isArray(root)) out.push(root);
+
+    // common array fields
+    const candidates = ['cars','vehicles','items','results','features','data','list'];
+    for (const k of Object.keys(root)) {
+      const v = root[k];
+      if (!v || typeof v !== 'object') continue;
+      if (Array.isArray(v)) out.push(v);
+      if (k === 'features' && Array.isArray(v)) {
+        // make GeoJSON more uniform
+        out.push(v.map(f => ({ ...f.properties, geometry: f.geometry })));
+      }
+      collectArrays(v, maxDepth - 1, out, seen);
     }
-    return arrays;
-  };
-
-  const hasCoords = (v) => {
-    const lat = v.lat ?? v.latitude ?? v.latE6 ?? (v.location && (v.location.lat ?? v.location.latitude)) ??
-                (v.geometry && v.geometry.coordinates && v.geometry.coordinates[1]);
-    const lon = v.lng ?? v.lon ?? v.longitude ?? v.lonE6 ?? (v.location && (v.location.lng ?? v.location.lon ?? v.location.longitude)) ??
-                (v.geometry && v.geometry.coordinates && v.geometry.coordinates[0]);
-    const num = (n) => typeof n === 'number' && isFinite(n);
-    return (num(lat) || num(v?.latE6)) && (num(lon) || num(v?.lonE6));
-  };
-
-  const normalize = (v) => {
-    const lat = v.lat ?? v.latitude ?? (v.latE6 != null ? v.latE6 / 1e6 :
-                (v.location && (v.location.lat ?? v.location.latitude)) ??
-                (v.geometry && v.geometry.coordinates && v.geometry.coordinates[1]));
-    const lng = v.lng ?? v.lon ?? v.longitude ?? (v.lonE6 != null ? v.lonE6 / 1e6 :
-                (v.location && (v.location.lng ?? v.location.lon ?? v.location.longitude)) ??
-                (v.geometry && v.geometry.coordinates && v.geometry.coordinates[0]));
-    return { ...v, lat, lng };
-  };
+    return out;
+  }
 
   const tried = [];
-  // Try each candidate until one returns an array with coords
-  for (const p of [...new Set(guesses)]) {
-    const url = origin + p;
+  for (const path of [...new Set(guesses)]) {
+    const url = origin + path;
     tried.push(url);
     try {
       const r = await fetch(url, { headers: { accept: 'application/json' } });
       if (!r.ok) continue;
       const text = await r.text();
-      let data;
-      try { data = JSON.parse(text); } catch { continue; }
+      let data; try { data = JSON.parse(text); } catch { continue; }
 
-      // Skip known non-vehicle payloads (like {carModels:[...]})
-      if (data && data.carModels && !data.cars) continue;
+      // Skip endpoints that are clearly model lists etc.
+      if (data && (data.carModels || data.models) && !data.cars && !data.vehicles) continue;
 
-      const arrays = getCandidateArrays(data);
+      // Find an array that actually contains coordinates
+      const arrays = collectArrays(data);
       for (const arr of arrays) {
-        const withCoords = arr.filter(hasCoords);
+        const withCoords = arr
+          .map(item => {
+            const pos = extractLatLng(item);
+            if (!pos) return null;
+            // Pull extra fields if present
+            const model = item.model || item.name || item.vehicleModel || (item.properties && item.properties.model);
+            const plate = item.plate || item.registration || item.license || item.identifier || (item.properties && item.properties.plate);
+            const fuel  = item.fuel || item.fuelLevel || item.fuelPercent || (item.properties && (item.properties.fuel || item.properties.fuelLevel));
+            const batt  = item.battery || item.batteryLevel || item.batteryPercent || (item.properties && (item.properties.battery || item.properties.batteryLevel));
+            const pct   = (typeof batt === 'number') ? batt : (typeof fuel === 'number' ? fuel : null);
+            return { lat: pos.lat, lng: pos.lng, model, plate, pct };
+          })
+          .filter(Boolean);
+
         if (withCoords.length > 0) {
-          const normalized = withCoords.map(normalize);
           return {
             statusCode: 200,
             headers: {
@@ -102,11 +131,11 @@ export async function handler(event) {
               'cache-control': 'no-store',
               'access-control-allow-origin': '*'
             },
-            body: JSON.stringify(normalized)
+            body: JSON.stringify(withCoords)
           };
         }
       }
-    } catch (_) { /* try next */ }
+    } catch { /* try next candidate */ }
   }
 
   return {
