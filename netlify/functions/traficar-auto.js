@@ -1,31 +1,25 @@
-// Auto-discover Traficar cars endpoint from the site's OpenAPI, with robust fallbacks.
+// Auto-discover a Traficar endpoint that returns VEHICLES with coordinates (not just carModels).
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
   const city = (event.queryStringParameters?.city || 'krakow').toLowerCase();
 
-  // helper to try a list of URLs until one returns valid JSON
-  async function tryUrls(urls) {
-    let lastErr;
-    for (const url of urls) {
-      try {
-        const r = await fetch(url, { headers: { accept: 'application/json' } });
-        if (!r.ok) { lastErr = new Error(`${url} -> ${r.status}`); continue; }
-        const text = await r.text();
-        try {
-          const data = JSON.parse(text);
-          return { ok: true, data, url, status: r.status };
-        } catch {
-          lastErr = new Error(`Invalid JSON from ${url}`);
-        }
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    return { ok: false, error: lastErr?.message || 'unknown', tried: urls };
-  }
+  // Start with good guesses
+  const guesses = [
+    `/api/${city}/cars`,
+    `/api/${city}/vehicles`,
+    `/api/cars?city=${encodeURIComponent(city)}`,
+    `/api/vehicles?city=${encodeURIComponent(city)}`,
+    `/${city}/cars`,
+    `/api/city/${city}/cars`,
+    `/api/city/${city}/vehicles`,
+    `/api/map/cars?city=${encodeURIComponent(city)}`,
+    `/api/map/vehicles?city=${encodeURIComponent(city)}`,
+    `/api/markers?city=${encodeURIComponent(city)}`,
+    `/api/available-cars?city=${encodeURIComponent(city)}`,
+    `/api/cars/available?city=${encodeURIComponent(city)}`
+  ];
 
-  // 1) Try to load OpenAPI and extract GET paths with "car"/"vehicle"
-  let candidates = [];
+  // Try to read OpenAPI to add more paths if available
   try {
     const specRes = await fetch(`${origin}/api/openapi.json`, { headers: { accept: 'application/json' } });
     if (specRes.ok) {
@@ -34,53 +28,90 @@ export async function handler(event) {
       for (const p of Object.keys(paths)) {
         const item = paths[p];
         if (!item?.get) continue;
-        const name = p.toLowerCase();
-        if (name.includes('car') || name.includes('vehicle')) candidates.push(p);
+        const lower = p.toLowerCase();
+        if (lower.includes('car') || lower.includes('vehicle') || lower.includes('marker')) {
+          let path = p.replace('{city}', city);
+          guesses.push(path);
+          // also try with ?city= if path doesn't already have it
+          if (!path.toLowerCase().includes('city=')) {
+            guesses.push(path + (path.includes('?') ? '&' : '?') + 'city=' + encodeURIComponent(city));
+          }
+        }
       }
     }
-  } catch (_) { /* ignore and use fallbacks */ }
+  } catch (_) {
+    // ignore – we'll just use the static guesses above
+  }
 
-  // 2) Add smart fallbacks
-  candidates.push(
-    `/api/${city}/cars`,
-    `/api/cars`,
-    `/${city}/cars`,
-    `/api/city/${city}/cars`,
-    `/api/${city}/vehicles`,
-    `/api/vehicles`
-  );
-
-  // 3) Build full URLs, try with and without ?city=
-  const urls = [];
-  for (const p of candidates) {
-    let path = p;
-    if (path.includes('{city}')) path = path.replace('{city}', encodeURIComponent(city));
-    const full = `${origin}${path}`;
-    urls.push(full);
-    if (!full.toLowerCase().includes('city=')) {
-      urls.push(full + (full.includes('?') ? '&' : '?') + 'city=' + encodeURIComponent(city));
+  // Helper to extract arrays and test for coordinates
+  const getCandidateArrays = (data) => {
+    const arrays = [];
+    if (Array.isArray(data)) arrays.push(data);
+    if (data && Array.isArray(data.cars)) arrays.push(data.cars);
+    if (data && Array.isArray(data.items)) arrays.push(data.items);
+    if (data && Array.isArray(data.results)) arrays.push(data.results);
+    if (data && Array.isArray(data.features)) {
+      arrays.push(data.features.map(f => ({ ...f.properties, geometry: f.geometry })));
     }
-  }
+    return arrays;
+  };
 
-  const result = await tryUrls(urls);
-  if (!result.ok) {
-    return { statusCode: 502, headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ error: 'All endpoint attempts failed', detail: result.error, tried: result.tried }) };
-  }
+  const hasCoords = (v) => {
+    const lat = v.lat ?? v.latitude ?? v.latE6 ?? (v.location && (v.location.lat ?? v.location.latitude)) ??
+                (v.geometry && v.geometry.coordinates && v.geometry.coordinates[1]);
+    const lon = v.lng ?? v.lon ?? v.longitude ?? v.lonE6 ?? (v.location && (v.location.lng ?? v.location.lon ?? v.location.longitude)) ??
+                (v.geometry && v.geometry.coordinates && v.geometry.coordinates[0]);
+    const num = (n) => typeof n === 'number' && isFinite(n);
+    return (num(lat) || num(v?.latE6)) && (num(lon) || num(v?.lonE6));
+  };
 
-  // 4) Normalize to a simple array
-  const raw = result.data;
-  const payload = Array.isArray(raw)
-    ? raw
-    : (raw.cars || raw.features || raw.items || raw.results || raw.data || raw);
+  const normalize = (v) => {
+    const lat = v.lat ?? v.latitude ?? (v.latE6 != null ? v.latE6 / 1e6 :
+                (v.location && (v.location.lat ?? v.location.latitude)) ??
+                (v.geometry && v.geometry.coordinates && v.geometry.coordinates[1]));
+    const lng = v.lng ?? v.lon ?? v.longitude ?? (v.lonE6 != null ? v.lonE6 / 1e6 :
+                (v.location && (v.location.lng ?? v.location.lon ?? v.location.longitude)) ??
+                (v.geometry && v.geometry.coordinates && v.geometry.coordinates[0]));
+    return { ...v, lat, lng };
+  };
+
+  const tried = [];
+  // Try each candidate until one returns an array with coords
+  for (const p of [...new Set(guesses)]) {
+    const url = origin + p;
+    tried.push(url);
+    try {
+      const r = await fetch(url, { headers: { accept: 'application/json' } });
+      if (!r.ok) continue;
+      const text = await r.text();
+      let data;
+      try { data = JSON.parse(text); } catch { continue; }
+
+      // Skip known non-vehicle payloads (like {carModels:[...]})
+      if (data && data.carModels && !data.cars) continue;
+
+      const arrays = getCandidateArrays(data);
+      for (const arr of arrays) {
+        const withCoords = arr.filter(hasCoords);
+        if (withCoords.length > 0) {
+          const normalized = withCoords.map(normalize);
+          return {
+            statusCode: 200,
+            headers: {
+              'content-type': 'application/json',
+              'cache-control': 'no-store',
+              'access-control-allow-origin': '*'
+            },
+            body: JSON.stringify(normalized)
+          };
+        }
+      }
+    } catch (_) { /* try next */ }
+  }
 
   return {
-    statusCode: 200,
-    headers: {
-      'content-type': 'application/json',
-      'cache-control': 'no-store',
-      'access-control-allow-origin': '*'
-    },
-    body: JSON.stringify(payload)
+    statusCode: 502,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ error: 'No vehicle array with coordinates found', tried })
   };
 }
