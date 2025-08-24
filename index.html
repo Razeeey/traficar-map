@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>TrafiCar — Live Cars</title>
 
+  <!-- MapLibre GL (free & smooth) -->
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css"/>
   <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
@@ -64,7 +65,7 @@
 
   <script>
   (function(){
-    const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // paste your MapTiler key
+    const MAPTILER_KEY = 'YOUR_MAPTILER_KEY'; // <-- paste your MapTiler key
     const API = '/.netlify/functions/traficar-auto';
 
     const centers = {
@@ -75,6 +76,7 @@
       szczecin:{lng:14.5528,lat:53.4285,z:12}, rzeszow:{lng:21.9990,lat:50.0413,z:13}
     };
 
+    // URL city
     const params = new URLSearchParams(location.search);
     const initialCity = centers[params.get('city')] ? params.get('city') : 'krakow';
 
@@ -84,9 +86,14 @@
     const refreshBtn = document.getElementById('refresh');
     citySel.value = initialCity;
 
-    let map, lastGood=[], isLoading=false, timer=null, sourceReady=false;
+    // Request control + caches
+    let map, sourceReady=false, timer=null, isLoading=false;
+    let currentCity = citySel.value;
+    let latestReq = 0; // monotonically increasing request id
+    const cityCache = new Map(); // city -> {cars, ts}
+    const emptyFC = { type:'FeatureCollection', features: [] };
 
-    // zone cache per city (in localStorage for 10 minutes)
+    // zone cache per city (localStorage, used by the function fast-path)
     const ZKEY = c => `traficar_zones_${c}`;
     function getCachedZones(c){
       try{
@@ -113,11 +120,7 @@
     map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
     map.on('load', () => {
-      map.addSource('cars', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-        cluster: true, clusterRadius: 60, clusterMaxZoom: 14
-      });
+      map.addSource('cars', { type:'geojson', data: emptyFC, cluster:true, clusterRadius:60, clusterMaxZoom:14 });
       map.addLayer({
         id:'clusters', type:'circle', source:'cars', filter:['has','point_count'],
         paint:{ 'circle-color':'#3e3e45','circle-stroke-color':'#111','circle-stroke-width':2,
@@ -180,26 +183,46 @@
       map.on('mouseleave','unclustered', ()=> map.getCanvas().style.cursor='');
 
       sourceReady = true;
-      load(); // first load
+      load(true); // first load (discover zones)
     });
 
     // UI events
     citySel.addEventListener('change', ()=>{
-      const c = citySel.value; const cfg = centers[c] || centers.krakow;
+      // update current city + URL
+      currentCity = citySel.value;
+      const cfg = centers[currentCity] || centers.krakow;
+      const p = new URLSearchParams(location.search); p.set('city', currentCity); history.replaceState(null,'',`?${p.toString()}`);
+
+      // reset request pipeline to avoid stale paints
+      latestReq++;
+      if (timer) { clearTimeout(timer); timer = null; }
+      // clear layer immediately so it doesn't "jump back"
+      if (sourceReady) map.getSource('cars').setData(emptyFC);
+      countEl.textContent = 'Loading…';
+      // reset model filter UI
+      modelSel.value = '';
+
+      // move the camera and load fresh data (force zone discovery if needed)
       map.easeTo({ center: cfg, zoom: cfg.z });
-      const p = new URLSearchParams(location.search); p.set('city', c); history.replaceState(null,'',`?${p.toString()}`);
-      load(true); // force re-discover if needed
+      load(true);
     });
-    modelSel.addEventListener('change', ()=> render(lastGood));
-    refreshBtn.addEventListener('click', ()=> load());
+
+    modelSel.addEventListener('change', ()=> {
+      const cache = cityCache.get(currentCity);
+      if (cache?.cars) renderForCity(currentCity, cache.cars);
+    });
+
+    document.getElementById('refresh').addEventListener('click', ()=> load());
 
     function setCount(n){ countEl.textContent = `${n} ${n===1?'car':'cars'}`; }
+
     function buildModels(data){
       const names = Array.from(new Set(data.map(v=>v.model).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pl'));
       const cur = modelSel.value;
       modelSel.innerHTML = '<option value="">All</option>' + names.map(n=>`<option>${n}</option>`).join('');
       if (names.includes(cur)) modelSel.value = cur;
     }
+
     function toGeo(data){
       return {
         type:'FeatureCollection',
@@ -219,12 +242,16 @@
       };
     }
 
-    function render(data){
-      if (Array.isArray(data) && data.length) lastGood = data.slice();
-      buildModels(lastGood);
+    function renderForCity(city, data){
+      // only render if this is the currently selected city
+      if (city !== currentCity) return;
+
+      // cache per city
+      cityCache.set(city, { cars: data, ts: Date.now() });
+      buildModels(data);
 
       const mod = modelSel.value.trim();
-      const filtered = (lastGood.length ? lastGood : data).filter(v => {
+      const filtered = data.filter(v => {
         if (!v) return false;
         const lat = Number(v.lat), lng = Number(v.lng);
         if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
@@ -250,33 +277,40 @@
       isLoading = true;
       if (timer) { clearTimeout(timer); timer = null; }
 
-      const city = citySel.value;
-      const cached = !forceDiscover && getCachedZones(city);
+      const reqId = ++latestReq;          // tag this request
+      const city = currentCity;           // capture city at start
+      const cachedZones = !forceDiscover && getCachedZones(city);
       const qs = new URLSearchParams({ city });
-      if (cached && cached.length) qs.set('zones', cached.join(','));
+      if (cachedZones && cachedZones.length) qs.set('zones', cachedZones.join(','));
 
       try{
         const res = await fetch(`${API}?${qs.toString()}`);
         const data = await res.json();
 
+        // ignore stale responses
+        if (reqId !== latestReq) return;
+
         if (Array.isArray(data)) {
-          // Fast path: zones were used already
-          render(data);
+          // fast path (zones known): just cars
+          renderForCity(city, data);
         } else if (data && Array.isArray(data.cars)) {
-          // Discovery response: store zones for speed next time
+          // discovery path: remember zones for speed
           if (Array.isArray(data.zones) && data.zones.length) setCachedZones(city, data.zones);
-          render(data.cars);
+          renderForCity(city, data.cars);
         } else {
-          // Fallback to last known good
-          if (lastGood.length) render(lastGood);
-          else render([]);
+          // fallback to that city's last cache (not another city's)
+          const cache = cityCache.get(city);
+          renderForCity(city, cache?.cars || []);
         }
       } catch (e) {
         console.error(e);
-        if (lastGood.length) render(lastGood);
+        const cache = cityCache.get(city);
+        renderForCity(city, cache?.cars || []);
       } finally {
-        isLoading = false;
-        timer = setTimeout(()=> load(false), 20000);
+        if (reqId === latestReq) { // only the latest schedules the next refresh
+          isLoading = false;
+          timer = setTimeout(()=> load(false), 20000);
+        }
       }
     }
   })();
