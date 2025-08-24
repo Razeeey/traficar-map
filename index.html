@@ -5,24 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>TrafiCar — Live Cars</title>
 
-  <!-- MapLibre GL (free & smooth) -->
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css"/>
   <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap">
+
   <style>
-    :root{
-      --panel:#17171c; --panel2:#1f1f26; --text:#f5f6fa; --muted:#a7a7b4;
-      --accent:#7b4bff; --accent2:#a07bff; --radius:14px; --shadow:0 10px 30px rgba(0,0,0,.35);
-    }
+    :root{ --panel2:#1f1f26; --text:#f5f6fa; --muted:#a7a7b4; --accent:#7b4bff; --accent2:#a07bff; --radius:14px; --shadow:0 10px 30px rgba(0,0,0,.35); }
     *{box-sizing:border-box}
     body{margin:0;background:linear-gradient(180deg,#0b0b0e,#141419);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
     #map{position:fixed;inset:0}
     .topbar{
       position:fixed;inset:12px 12px auto 12px;z-index:10;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
       background:rgba(23,23,28,.82);backdrop-filter:saturate(1.2) blur(8px);border:1px solid rgba(255,255,255,.06);
-      border-radius:var(--radius);padding:8px 10px;box-shadow:var(--shadow)
+      border-radius:14px;padding:8px 10px;box-shadow:var(--shadow)
     }
     .brand{font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));padding:8px 12px;border-radius:12px}
     select,button{background:var(--panel2);color:var(--text);border:1px solid rgba(255,255,255,.08);padding:9px 12px;border-radius:12px;font-weight:600;cursor:pointer}
@@ -67,13 +64,9 @@
 
   <script>
   (function(){
-    // 🔑 MapTiler free key
-    const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // <-- paste your key here
-
-    // API for cars (your Netlify function already city-filters & returns only available)
+    const MAPTILER_KEY = 'YOUR_MAPTILER_KEY'; // paste your MapTiler key
     const API = '/.netlify/functions/traficar-auto';
 
-    // City centers + default zooms
     const centers = {
       krakow:{lng:19.9383,lat:50.0614,z:13}, warszawa:{lng:21.0122,lat:52.2297,z:12},
       wroclaw:{lng:17.0385,lat:51.1079,z:13}, poznan:{lng:16.9252,lat:52.4064,z:13},
@@ -82,20 +75,34 @@
       szczecin:{lng:14.5528,lat:53.4285,z:12}, rzeszow:{lng:21.9990,lat:50.0413,z:13}
     };
 
-    // Read ?city= from URL
     const params = new URLSearchParams(location.search);
     const initialCity = centers[params.get('city')] ? params.get('city') : 'krakow';
 
     const citySel = document.getElementById('city');
     const modelSel = document.getElementById('model');
-    const refreshBtn = document.getElementById('refresh');
     const countEl = document.getElementById('count');
-
+    const refreshBtn = document.getElementById('refresh');
     citySel.value = initialCity;
 
-    let map, sourceReady=false, lastGood=[], isLoading=false, timer=null;
+    let map, lastGood=[], isLoading=false, timer=null, sourceReady=false;
 
-    // Init map
+    // zone cache per city (in localStorage for 10 minutes)
+    const ZKEY = c => `traficar_zones_${c}`;
+    function getCachedZones(c){
+      try{
+        const raw = localStorage.getItem(ZKEY(c));
+        if (!raw) return null;
+        const { zones, ts } = JSON.parse(raw);
+        if (!Array.isArray(zones)) return null;
+        if (Date.now()-ts > 10*60*1000) return null; // 10 min
+        return zones;
+      }catch{ return null; }
+    }
+    function setCachedZones(c, zones){
+      try{ localStorage.setItem(ZKEY(c), JSON.stringify({ zones, ts: Date.now() })); }catch{}
+    }
+
+    // MAP
     map = new maplibregl.Map({
       container: 'map',
       style: `https://api.maptiler.com/maps/streets/style.json?key=${MAPTILER_KEY}`,
@@ -106,29 +113,21 @@
     map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
     map.on('load', () => {
-      // GeoJSON source with clustering
       map.addSource('cars', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
         cluster: true, clusterRadius: 60, clusterMaxZoom: 14
       });
-      // Cluster circles
       map.addLayer({
         id:'clusters', type:'circle', source:'cars', filter:['has','point_count'],
-        paint:{
-          'circle-color':'#3e3e45',
-          'circle-stroke-color':'#111',
-          'circle-stroke-width':2,
-          'circle-radius':['step',['get','point_count'],16, 20, 20, 50, 26, 100, 32]
-        }
+        paint:{ 'circle-color':'#3e3e45','circle-stroke-color':'#111','circle-stroke-width':2,
+                'circle-radius':['step',['get','point_count'],16,20,20,50,26,100,32] }
       });
-      // Cluster counts
       map.addLayer({
         id:'cluster-count', type:'symbol', source:'cars', filter:['has','point_count'],
         layout:{ 'text-field':['get','point_count_abbreviated'],'text-font':['Open Sans Semibold','Arial Unicode MS Bold'],'text-size':12 },
         paint:{ 'text-color':'#fff' }
       });
-      // Unclustered points: color by fuel %
       map.addLayer({
         id:'unclustered', type:'circle', source:'cars', filter:['!',['has','point_count']],
         paint:{
@@ -145,13 +144,11 @@
         }
       });
 
-      // Interaction
-      map.on('click','clusters', async (e)=>{
-        const features = map.queryRenderedFeatures(e.point, { layers:['clusters'] });
-        const clusterId = features[0].properties.cluster_id;
-        map.getSource('cars').getClusterExpansionZoom(clusterId, (err, zoom)=>{
+      map.on('click','clusters', (e)=>{
+        const feat = map.queryRenderedFeatures(e.point, { layers:['clusters'] })[0];
+        map.getSource('cars').getClusterExpansionZoom(feat.properties.cluster_id, (err, zoom)=>{
           if (err) return;
-          map.easeTo({ center: features[0].geometry.coordinates, zoom });
+          map.easeTo({ center: feat.geometry.coordinates, zoom });
         });
       });
 
@@ -164,7 +161,6 @@
         const range = (v.rangeKm!=null) ? ` (${v.rangeKm} km)` : '';
         const addr = v.address || '';
         const apple = `https://maps.apple.com/?ll=${coords[1]},${coords[0]}&q=${encodeURIComponent(v.model || 'Car')}`;
-
         const html = `
           <div class="infocard">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
@@ -189,16 +185,14 @@
 
     // UI events
     citySel.addEventListener('change', ()=>{
-      const c = citySel.value;
-      const center = centers[c] || centers.krakow;
-      map.easeTo({ center, zoom:center.z });
+      const c = citySel.value; const cfg = centers[c] || centers.krakow;
+      map.easeTo({ center: cfg, zoom: cfg.z });
       const p = new URLSearchParams(location.search); p.set('city', c); history.replaceState(null,'',`?${p.toString()}`);
-      load();
+      load(true); // force re-discover if needed
     });
     modelSel.addEventListener('change', ()=> render(lastGood));
-    document.getElementById('refresh').addEventListener('click', ()=> load());
+    refreshBtn.addEventListener('click', ()=> load());
 
-    // Helpers
     function setCount(n){ countEl.textContent = `${n} ${n===1?'car':'cars'}`; }
     function buildModels(data){
       const names = Array.from(new Set(data.map(v=>v.model).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pl'));
@@ -226,11 +220,9 @@
     }
 
     function render(data){
-      // cache & model list
       if (Array.isArray(data) && data.length) lastGood = data.slice();
       buildModels(lastGood);
 
-      // model filter client-side
       const mod = modelSel.value.trim();
       const filtered = (lastGood.length ? lastGood : data).filter(v => {
         if (!v) return false;
@@ -240,14 +232,12 @@
         return true;
       });
 
-      // push to map
       if (sourceReady){
         const src = map.getSource('cars');
         if (src) src.setData(toGeo(filtered));
       }
       setCount(filtered.length);
 
-      // fit to data on each load (for the chosen city)
       if (filtered.length){
         const b = new maplibregl.LngLatBounds();
         filtered.forEach(v => b.extend([Number(v.lng), Number(v.lat)]));
@@ -255,24 +245,38 @@
       }
     }
 
-    async function load(){
+    async function load(forceDiscover=false){
       if (!sourceReady || isLoading) return;
       isLoading = true;
       if (timer) { clearTimeout(timer); timer = null; }
 
       const city = citySel.value;
+      const cached = !forceDiscover && getCachedZones(city);
+      const qs = new URLSearchParams({ city });
+      if (cached && cached.length) qs.set('zones', cached.join(','));
+
       try{
-        const res = await fetch(`${API}?city=${encodeURIComponent(city)}`);
+        const res = await fetch(`${API}?${qs.toString()}`);
         const data = await res.json();
-        if (Array.isArray(data) && data.length) render(data);
-        else if (lastGood.length) render(lastGood);
-        else render([]);
+
+        if (Array.isArray(data)) {
+          // Fast path: zones were used already
+          render(data);
+        } else if (data && Array.isArray(data.cars)) {
+          // Discovery response: store zones for speed next time
+          if (Array.isArray(data.zones) && data.zones.length) setCachedZones(city, data.zones);
+          render(data.cars);
+        } else {
+          // Fallback to last known good
+          if (lastGood.length) render(lastGood);
+          else render([]);
+        }
       } catch (e) {
         console.error(e);
         if (lastGood.length) render(lastGood);
       } finally {
         isLoading = false;
-        timer = setTimeout(load, 20000);
+        timer = setTimeout(()=> load(false), 20000);
       }
     }
   })();
