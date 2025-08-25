@@ -88,7 +88,7 @@
 
 <script>
 (function(){
-  // 1) Put your MapTiler key here — in quotes:
+  // Put your MapTiler key here (IN QUOTES):
   const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC';
 
   const API_CARS  = '/.netlify/functions/traficar-auto';
@@ -115,11 +115,12 @@
   citySel.value = initialCity;
   let currentCity = citySel.value;
 
-  // model selection state per city; empty set means "ALL"
-  const modelSelections = new Map(); // city -> Set(modelName)
-  const modelOptions    = new Map(); // city -> {car:[..],van:[..],scooter:[..]}
+  // Per-city selection set: Set(modelName).  NULL means “not initialised yet”.
+  const modelSelections = new Map(); // city -> Set or null
+  // Cache of available options per city
+  const modelOptions = new Map();    // city -> {car:[],van:[],scooter:[]}
 
-  // map
+  // Map
   const map = new maplibregl.Map({
     container:'map',
     style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
@@ -129,8 +130,8 @@
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
-  // sources & layers
   map.on('load', async () => {
+    // clustered cars with category counters
     map.addSource('cars', {
       type:'geojson',
       data: emptyFC(),
@@ -142,11 +143,11 @@
       }
     });
 
-    // Pie cluster icons + number text
+    // cluster pies + count
     map.addLayer({
       id:'clusters-pie', type:'symbol', source:'cars', filter:['has','point_count'],
       layout:{
-        'icon-image': ['concat','pie_', ['to-string',['get','car']], '_', ['to-string',['get','van']], '_', ['to-string',['get','scooter']]],
+        'icon-image': ['concat','pie_', ['to-string',['coalesce',['get','car'],0]], '_', ['to-string',['coalesce',['get','van'],0]], '_', ['to-string',['coalesce',['get','scooter'],0]]],
         'icon-size': 1,
         'icon-allow-overlap': true,
         'text-field': ['get','point_count_abbreviated'],
@@ -158,7 +159,7 @@
       paint:{ 'text-color':'#ffffff', 'text-halo-color':'#111', 'text-halo-width':1.2 }
     });
 
-    // Unclustered points
+    // unclustered points
     map.addLayer({
       id:'unclustered', type:'circle', source:'cars', filter:['!',['has','point_count']],
       paint:{
@@ -175,11 +176,10 @@
       }
     });
 
-    // Area overlays
+    // overlays
     map.addSource('zones-relocation', { type:'geojson', data: emptyFC() });
     map.addSource('zones-nopark',     { type:'geojson', data: emptyFC() });
     map.addSource('zones-ogarniam',   { type:'geojson', data: emptyFC() });
-
     map.addLayer({ id:'relocation-fill', type:'fill', source:'zones-relocation', paint:{ 'fill-color':'#ffd500', 'fill-opacity':0.22 }});
     map.addLayer({ id:'relocation-outline', type:'line', source:'zones-relocation', paint:{ 'line-color':'#ffd500', 'line-width':2 }});
     map.addLayer({ id:'nopark-fill', type:'fill', source:'zones-nopark', paint:{ 'fill-color':'#ff4d4d', 'fill-opacity':0.28 }});
@@ -187,7 +187,7 @@
     map.addLayer({ id:'ogarniam-fill', type:'fill', source:'zones-ogarniam', paint:{ 'fill-color':'#a56cff', 'fill-opacity':0.16 }});
     map.addLayer({ id:'ogarniam-outline', type:'line', source:'zones-ogarniam', paint:{ 'line-color':'#a56cff', 'line-width':2 }});
 
-    // popup
+    // popups
     map.on('click','unclustered', (e)=>{
       const v = e.features[0].properties;
       const [lng,lat] = e.features[0].geometry.coordinates;
@@ -212,26 +212,35 @@
       new maplibregl.Popup({ closeButton:true, offset:12 }).setLngLat([lng,lat]).setHTML(html).addTo(map);
     });
 
-    // Generate pie icons on demand (fixes “numbers only”)
+    // PIE ICONS — two ways (so they always render):
+    // a) auto-generate on demand
     const PIE_CACHE = new Set();
     map.on('styleimagemissing', (e) => {
       const m = /^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id);
       if (!m || PIE_CACHE.has(e.id)) return;
-      const c = +m[1], v = +m[2], s = +m[3];
-      const img = makePie(c,v,s);
-      try { map.addImage(e.id, img, { pixelRatio:2 }); PIE_CACHE.add(e.id); } catch {}
+      const img = makePie(+m[1], +m[2], +m[3]);
+      try { map.addImage(e.id, img, { pixelRatio:2 }); PIE_CACHE.add(e.id); map.triggerRepaint(); } catch {}
+    });
+    // b) and also sweep visible clusters every idle frame (fallback)
+    map.on('idle', () => {
+      const feats = map.queryRenderedFeatures({ layers:['clusters-pie'] });
+      for (const f of feats) {
+        const id = `pie_${f.properties.car|0}_${f.properties.van|0}_${f.properties.scooter|0}`;
+        if (map.hasImage(id)) continue;
+        const img = makePie(f.properties.car|0, f.properties.van|0, f.properties.scooter|0);
+        try { map.addImage(id, img, { pixelRatio:2 }); } catch {}
+      }
     });
 
-    // first load
+    // initial load
     await loadAll(true, { fit:true });
   });
 
-  // pie drawing
+  // draw a pie icon (purple cars, dark-blue vans, turquoise scooters)
   function makePie(c,v,s){
     const size = 64; const r = size/2;
     const cvs = document.createElement('canvas'); cvs.width=size; cvs.height=size;
     const g = cvs.getContext('2d');
-    // base ring
     g.beginPath(); g.arc(r,r,r-2,0,Math.PI*2); g.fillStyle='#3e3e45'; g.fill();
     const total = Math.max(1, c+v+s);
     let start = -Math.PI/2;
@@ -240,16 +249,15 @@
       g.beginPath(); g.moveTo(r,r); g.arc(r,r,r-4,start,start+ang,false); g.closePath();
       g.fillStyle=color; g.fill(); start+=ang;
     };
-    slice(c,'#7b4bff'); // cars (purple)
-    slice(v,'#1d4ed8'); // vans (dark blue)
-    slice(s,'#2dd4bf'); // scooters (turquoise)
-    // inner disk
+    slice(c,'#7b4bff'); // cars
+    slice(v,'#1d4ed8'); // vans
+    slice(s,'#2dd4bf'); // scooters
     g.beginPath(); g.arc(r,r,r-18,0,Math.PI*2); g.fillStyle='#121218'; g.fill();
     g.beginPath(); g.arc(r,r,r-1,0,Math.PI*2); g.strokeStyle='#111'; g.lineWidth=2; g.stroke();
     return cvs;
   }
 
-  // ---------- state & helpers ----------
+  // ---------- state/helpers ----------
   let timer = null;
   function emptyFC(){ return { type:'FeatureCollection', features: [] }; }
   function setCount(n){ countEl.textContent = `${n} ${n===1?'car':'cars'}`; }
@@ -272,11 +280,19 @@
     };
   }
 
+  // Apply current filter and paint. If selection === empty Set → show NONE.
   function applyFilterAndRender({fit=false}={}){
-    const all = window.__CITY_CACHE?.cars || [];
-    const chosen = modelSelections.get(currentCity);
-    const allowAll = !chosen || chosen.size===0;
-    const filtered = all.filter(v => allowAll || chosen.has(v.model));
+    const cars = window.__CITY_CACHE?.cars || [];
+    const sel = modelSelections.get(currentCity); // Set or null
+    let filtered;
+    if (sel === null) {
+      // should never happen now; treat as ALL
+      filtered = cars;
+    } else if (sel.size === 0) {
+      filtered = []; // user unchecked everything → show none
+    } else {
+      filtered = cars.filter(v => sel.has(v.model));
+    }
     map.getSource('cars')?.setData(toGeo(filtered));
     setCount(filtered.length);
     if (fit && filtered.length){
@@ -286,11 +302,22 @@
     }
   }
 
-  // Build model checklist once per city; preserve user selection
+  // Build/update the checklist without destroying the user’s choice.
   function buildModelPanel(grouped){
     modelOptions.set(currentCity, grouped);
-    const prev = modelSelections.get(currentCity) || new Set(); // what the user already chose
-    const keepChecked = (name) => prev.size===0 || prev.has(name); // default = all checked if no prior choice
+
+    // all model names available now
+    const all = [...(grouped.car||[]), ...(grouped.van||[]), ...(grouped.scooter||[])];
+
+    // initialise selection for this city ONCE to “all checked”
+    if (!modelSelections.has(currentCity)) {
+      modelSelections.set(currentCity, new Set(all));
+    } else {
+      // keep existing selections; add any new models as checked; remove missing models
+      const set = modelSelections.get(currentCity);
+      for (const name of all) if (!set.has(name)) set.add(name);    // new model → checked by default
+      for (const name of Array.from(set)) if (!all.includes(name)) set.delete(name);
+    }
 
     const carsDiv = document.getElementById('models-cars');
     const vansDiv = document.getElementById('models-vans');
@@ -303,34 +330,18 @@
         const wrap = document.createElement('label');
         wrap.innerHTML = `<input type="checkbox" id="${id}"> ${name}`;
         const cb = wrap.querySelector('input');
-        cb.checked = keepChecked(name);
+        cb.checked = modelSelections.get(currentCity).has(name);
         cb.addEventListener('change', ()=>{
-          const set = modelSelections.get(currentCity) || new Set([...arrFromAll()]);
+          const set = modelSelections.get(currentCity);
           if (cb.checked) set.add(name); else set.delete(name);
-          // If the set becomes "all" or "none", normalize to empty (meaning ALL)
-          const allNames = arrFromAll();
-          const allCount = allNames.length;
-          const selectedCount = set.size;
-          if (selectedCount===0 || selectedCount===allCount) {
-            modelSelections.set(currentCity, new Set()); // ALL
-          } else {
-            modelSelections.set(currentCity, set);
-          }
           applyFilterAndRender({fit:false}); // don’t recenter on filter change
         });
         el.appendChild(wrap);
       });
     }
-    function arrFromAll(){
-      const g = grouped || {car:[],van:[],scooter:[]};
-      return [...(g.car||[]), ...(g.van||[]), ...(g.scooter||[])];
-    }
-
     fill(carsDiv, grouped.car||[]);
     fill(vansDiv, grouped.van||[]);
     fill(scootDiv, grouped.scooter||[]);
-    // normalize initial selection: if nothing explicitly chosen, treat as ALL
-    if (!modelSelections.has(currentCity)) modelSelections.set(currentCity, new Set());
   }
 
   // UI events
@@ -341,7 +352,7 @@
     clearTimeout(timer);
     map.getSource('cars')?.setData(emptyFC());
     setCount(0);
-    map.easeTo({ center: cfg, zoom: cfg.z }); // move only on city change
+    map.easeTo({ center: cfg, zoom: cfg.z }); // only on city change
     loadAll(true, { fit:true });
   });
 
@@ -361,7 +372,7 @@
     map.setLayoutProperty('ogarniam-outline','visibility', e.target.checked ? 'visible' : 'none');
   });
 
-  // global cache for current city’s cars (kept simple)
+  // simple city cache
   window.__CITY_CACHE = { cars: [] };
 
   async function loadAll(first=false, {fit=false}={}){
@@ -383,20 +394,14 @@
         localStorage.setItem(`traficar_zones_${currentCity}`, JSON.stringify({ zones, ts: Date.now() }));
       }
 
-      // group models by kind for the checklist; only rebuild if the set changed
+      // group models for the checklist
       const byKind = { car:new Set(), van:new Set(), scooter:new Set() };
       for (const v of cars) if (v && v.model) (byKind[v.kind||'car']||byKind.car).add(v.model);
       const grouped = { car:[...byKind.car], van:[...byKind.van], scooter:[...byKind.scooter] };
-      const prevGrouped = modelOptions.get(currentCity);
-      const same =
-        prevGrouped &&
-        JSON.stringify([...prevGrouped.car].sort())     === JSON.stringify([...grouped.car].sort()) &&
-        JSON.stringify([...prevGrouped.van].sort())     === JSON.stringify([...grouped.van].sort()) &&
-        JSON.stringify([...prevGrouped.scooter].sort()) === JSON.stringify([...grouped.scooter].sort());
-      if (!same) buildModelPanel(grouped); // preserves previous selection where possible
 
-      window.__CITY_CACHE.cars = cars;
-      applyFilterAndRender({fit}); // fit only on first load / city change
+      buildModelPanel(grouped);          // preserves previous selections
+      window.__CITY_CACHE.cars = cars;   // store
+      applyFilterAndRender({fit});       // render with current selection
     }catch(e){ console.error(e); }
 
     // areas
@@ -411,6 +416,9 @@
     clearTimeout(timer);
     timer = setTimeout(()=> loadAll(false, {fit:false}), 20000);
   }
+
+  // helpers
+  function emptyFC(){ return { type:'FeatureCollection', features: [] }; }
 
 })();
 </script>
