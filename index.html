@@ -21,6 +21,7 @@
   body{margin:0;background:#0c0c10;color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
   #map{position:fixed;inset:0}
 
+  /* top bar */
   .topbar{position:fixed;left:12px;right:12px;top:12px;z-index:10;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:rgba(23,23,28,.82);backdrop-filter:saturate(1.2) blur(8px);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);padding:8px 10px;box-shadow:var(--shadow)}
   .brand{font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));padding:8px 12px;border-radius:10px}
   select,button{background:var(--panel2);color:var(--text);border:1px solid rgba(255,255,255,.08);padding:9px 12px;border-radius:10px;font-weight:600;cursor:pointer}
@@ -28,6 +29,7 @@
   .spacer{flex:1}
   .count{background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
 
+  /* filter panel */
   .panel{position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;width:240px;box-shadow:var(--shadow)}
   .panel h4{margin:8px 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
   .row{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:14px}
@@ -35,6 +37,7 @@
   .panel .small{display:flex;gap:12px;margin:4px 0 2px}
   .panel .small a{font-size:12px;color:#bfc0ca;text-decoration:underline;cursor:pointer}
 
+  /* popup – white card */
   .maplibregl-popup{max-width:360px !important}
   .maplibregl-popup-content{
     padding:12px;border-radius:14px;background:var(--card);color:var(--ink);
@@ -78,6 +81,7 @@
   <div id="count" class="count">0 cars</div>
 </div>
 
+<!-- Right filter panel -->
 <div class="panel">
   <h4>Osobowe</h4>
   <div id="models-cars"></div>
@@ -95,11 +99,12 @@
 
 <script>
 (function(){
-  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC';
+  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // ← put your key IN QUOTES
 
   const API_CARS  = '/.netlify/functions/traficar-auto';
   const API_AREAS = '/.netlify/functions/traficar-areas';
 
+  /* ---------- helpers/state ---------- */
   const centers = {
     krakow:{lng:19.9383,lat:50.0614,z:13}, warszawa:{lng:21.0122,lat:52.2297,z:12},
     wroclaw:{lng:17.0385,lat:51.1079,z:13}, poznan:{lng:16.9252,lat:52.4064,z:13},
@@ -122,8 +127,8 @@
   citySel.value = initialCity;
   let currentCity = citySel.value;
 
-  const modelSelections = new Map();
-  const modelOptions    = new Map();
+  const modelSelections = new Map(); // city -> Set(model)
+  const modelOptions    = new Map(); // city -> {car:[],van:[],scooter:[]}
   let lastUIChange = 0; const noteUI = ()=>{ lastUIChange = Date.now(); };
 
   function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
@@ -147,6 +152,7 @@
     return { webp: `${base}.webp`, jpg: `${base}.jpg`, fallback: SILHOUETTES[kind||'car'] };
   }
 
+  /* ---------- map ---------- */
   const map = new maplibregl.Map({
     container:'map',
     style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
@@ -167,6 +173,7 @@
       }
     });
 
+    // cluster pie icons
     const PIE_CACHE = new Set();
     map.on('styleimagemissing', (e)=>{
       const m=/^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id); if(!m||PIE_CACHE.has(e.id))return;
@@ -195,6 +202,7 @@
       paint:{'circle-color':['case',['!', ['has','pct']], '#8e8e93', ['>=', ['get','pct'], 50], '#3ddc84', ['>=', ['get','pct'], 20], '#ffb020', '#ff6b6b'],
              'circle-stroke-color':'#111','circle-stroke-width':2,'circle-radius':8 }});
 
+    // overlays
     map.addSource('zones-relocation',{type:'geojson',data:emptyFC()});
     map.addSource('zones-nopark',{type:'geojson',data:emptyFC()});
     map.addSource('zones-ogarniam',{type:'geojson',data:emptyFC()});
@@ -205,21 +213,25 @@
     map.addLayer({id:'ogarniam-fill',type:'fill',source:'zones-ogarniam',paint:{'fill-color':'#a56cff','fill-opacity':0.16}});
     map.addLayer({id:'ogarniam-outline',type:'line',source:'zones-ogarniam',paint:{'line-color':'#a56cff','line-width':2}});
 
+    // popup
     map.on('click','unclustered',(e)=>{
       const v=e.features[0].properties; const [lng,lat]=e.features[0].geometry.coordinates;
       const badge=v.number?v.number:(v.id?String(v.id).slice(-4):''); const plate=v.plate||'';
       const pct=(v.pct!=null)?`${v.pct}%`:'—'; const range=(v.rangeKm!=null)?` (${v.rangeKm} km)`:'';
       const addr=v.address||''; const apple=`https://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(v.model||'Car')}`;
       const img=modelImage(v.model,v.kind);
+      const titleEsc = String(v.model||'Vehicle').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
       const html=`
         <div class="infocard">
-          <picture>
-            <source type="image/webp" srcset="${img.webp}">
-            <img class="carimg" src="${img.jpg}" onerror="this.src='${img.fallback}'" alt="${(v.model||'Vehicle').replace(/"/g,'&quot;')}">
-          </picture>
+          <img class="carimg"
+               loading="lazy"
+               src="${img.webp}"
+               onerror="if(this.dataset.step!=='jpg'){this.dataset.step='jpg';this.src='${img.jpg}';}else{this.onerror=null;this.src='${img.fallback}';}"
+               alt="${titleEsc}">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
             <span class="badge">${badge}</span>
-            <div class="title">${v.model||'Vehicle'}</div>
+            <div class="title">${titleEsc}</div>
           </div>
           <div class="muted" style="margin:-2px 0 8px">${plate||'&nbsp;'}</div>
           <div class="muted" style="margin:6px 0">⛽ <b>${pct}${range}</b></div>
@@ -233,6 +245,7 @@
     await loadAll(true,{fit:true});
   });
 
+  // cluster pie (ImageData)
   function pieImageData(c,v,s){
     const size=64*2,r=size/2,cvs=document.createElement('canvas');cvs.width=size;cvs.height=size;const g=cvs.getContext('2d');
     g.beginPath();g.arc(r,r,r-4,0,Math.PI*2);g.fillStyle='#3e3e45';g.fill();
@@ -244,10 +257,10 @@
     return g.getImageData(0,0,size,size);
   }
 
-  /* ----- data/filter plumbing ----- */
+  /* ---------- data/filter plumbing ---------- */
   let timer=null; window.__CITY_CACHE={cars:[]};
   const setCount=n=>{countEl.textContent=`${n} ${n===1?'car':'cars'}`};
-  const emptyFC=()=>({type:'FeatureCollection',features:[]});   /* ← single definition */
+  const emptyFC=()=>({type:'FeatureCollection',features:[]});
   const toGeo=data=>({type:'FeatureCollection',features:data.map(v=>({type:'Feature',geometry:{type:'Point',coordinates:[Number(v.lng),Number(v.lat)]},properties:{id:v.id??null,model:v.model??'Vehicle',plate:v.plate??'',number:v.number??'',pct:(typeof v.pct==='number')?v.pct:null,rangeKm:(typeof v.rangeKm==='number')?v.rangeKm:null,address:v.address||'',kind:v.kind||'car'}}))});
 
   function applyFilterAndRender({fit=false}={}){
@@ -259,18 +272,11 @@
 
   function sameList(a=[],b=[]){return a.slice().sort().join('|')===b.slice().sort().join('|')}
   function buildModelPanelIfNeeded(grouped){
-    const prev=modelOptions.get(currentCity);
-    const need=!prev||!sameList(prev.car,grouped.car)||!sameList(prev.van,grouped.van)||!sameList(prev.scooter,grouped.scooter);
+    const prev=modelOptions.get(currentCity); const need=!prev||!sameList(prev.car,grouped.car)||!sameList(prev.van,grouped.van)||!sameList(prev.scooter,grouped.scooter);
     if(!need) return;
     modelOptions.set(currentCity,grouped);
-    if(!modelSelections.has(currentCity)){
-      modelSelections.set(currentCity,new Set([...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])]));
-    }else{
-      const set=modelSelections.get(currentCity);
-      const all=[...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])];
-      for(const n of all)set.add(n);
-      for(const n of Array.from(set)) if(!all.includes(n)) set.delete(n);
-    }
+    if(!modelSelections.has(currentCity)){ modelSelections.set(currentCity,new Set([...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])])); }
+    else{ const set=modelSelections.get(currentCity); const all=[...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])]; for(const n of all)set.add(n); for(const n of Array.from(set)) if(!all.includes(n)) set.delete(n); }
     const carsDiv=document.getElementById('models-cars'),vansDiv=document.getElementById('models-vans'),scootDiv=document.getElementById('models-scooters');
     function fill(el,arr){
       el.innerHTML='';
