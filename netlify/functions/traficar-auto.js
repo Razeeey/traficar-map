@@ -1,10 +1,10 @@
-// Traficar proxy — city-only, AVAILABLE ONLY, fast soft+strict discovery + KNOWN_ZONES.
-// First call without zones: discover zones with a "soft" pass (any non-busy cars) so we *always* learn zones,
-// then fetch those zones again *strictly* (available-only). Returns { cars, zones }.
-// When zones are known (via KNOWN_ZONES, cache, or ?zones=...), it returns [ cars ] fast.
-// Add &includeZones=1 to always get { cars, zones } for debugging in your browser.
+// Traficar proxy — city-only, AVAILABLE ONLY, fast soft→strict discovery + KNOWN_ZONES.
+// First call without zones: discover zones with a SOFT pass (bigger radius) so we always learn zones,
+// then fetch those zones STRICT (available-only). Returns { cars, zones }.
+// When zones are known (via KNOWN_ZONES, warm cache, or ?zones=...), it returns [ cars ] fast.
+// Add &includeZones=1 to always get { cars, zones } in your browser.
 
-let CITY_STATE = Object.create(null); // warm cache while function instance is alive
+let CITY_STATE = Object.create(null); // warm cache while the function instance lives
 
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
@@ -12,59 +12,69 @@ export async function handler(event) {
   const cityKey = (q.city || '').toLowerCase().trim();
   if (!cityKey) return json({ error: 'missing city' }, 400);
 
-  // City centers + radii (km) — widened Wrocław
+  // City centres + radii (km). Slightly generous so we don’t clip edge cars.
   const CITY = {
     krakow:     { c:[50.0614,19.9383], r:25 },
     warszawa:   { c:[52.2297,21.0122], r:35 },
-    wroclaw:    { c:[51.1079,17.0385], r:35 }, // ↑ was 22
-    poznan:     { c:[52.4064,16.9252], r:24 },
-    trojmiasto: { c:[54.3722,18.6383], r:42 },
-    slask:      { c:[50.2649,19.0238], r:45 },
-    lublin:     { c:[51.2465,22.5684], r:22 },
-    lodz:       { c:[51.7592,19.4550], r:26 },
-    szczecin:   { c:[53.4285,14.5528], r:24 },
-    rzeszow:    { c:[50.0413,21.9990], r:22 }
+    wroclaw:    { c:[51.1079,17.0385], r:35 }, // widened
+    poznan:     { c:[52.4064,16.9252], r:28 },
+    trojmiasto: { c:[54.3722,18.6383], r:46 }, // Tri-city wide
+    slask:      { c:[50.2649,19.0238], r:50 }, // Silesian agglo wide
+    lublin:     { c:[51.2465,22.5684], r:24 },
+    lodz:       { c:[51.7592,19.4550], r:28 },
+    szczecin:   { c:[53.4285,14.5528], r:26 },
+    rzeszow:    { c:[50.0413,21.9990], r:24 }
   };
   const city = CITY[cityKey] || CITY.krakow;
 
-  // 🚀 Fill these as you learn them to make cities instant.
+  // 🔒 KNOWN_ZONES — fill these as you learn them. This makes cities instant.
   const KNOWN_ZONES = {
     krakow:    [1, 6],
-    warszawa:  [],
-    wroclaw:   [],       // we'll discover these below
+    warszawa:  [2, 5],
+    wroclaw:   [3],
     poznan:    [],
     trojmiasto:[],
-    slask:     [6],      // from your test
+    slask:     [6],
     lublin:    [],
     lodz:      [],
-    szczecin:  [],
+    szczecin:  [10],
     rzeszow:   []
   };
 
   const includeZones = q.includeZones === '1';
-  const zonesParam = (q.zones || '').trim();
-  const zonesFromQS = zonesParam ? zonesParam.split(',').map(s=>Number(s.trim())).filter(n=>Number.isFinite(n)&&n>0) : null;
+  const zonesFromQS = (q.zones || '')
+    .split(',')
+    .map(s => Number(s.trim()))
+    .filter(n => Number.isFinite(n) && n > 0);
 
-  // Per-city warm state
+  // Per-city warm state (survives across calls while instance is warm)
   const S = CITY_STATE[cityKey] ||= { zones: [], zonesTs: 0 };
 
-  // Prefer zones in this order
+  // Prefer zones in this order: KNOWN_ZONES → ?zones= → warm cache
   let zones = null;
-  if (Array.isArray(KNOWN_ZONES[cityKey]) && KNOWN_ZONES[cityKey].length) zones = KNOWN_ZONES[cityKey];
-  else if (zonesFromQS && zonesFromQS.length) zones = zonesFromQS;
-  else if (S.zones && S.zones.length && (Date.now()-S.zonesTs)<10*60*1000) zones = S.zones;
+  if (KNOWN_ZONES[cityKey]?.length) zones = KNOWN_ZONES[cityKey];
+  else if (zonesFromQS.length)       zones = zonesFromQS;
+  else if (S.zones.length && Date.now() - S.zonesTs < 10*60*1000) zones = S.zones;
 
   const headers = { accept:'application/json', 'user-agent':'Mozilla/5.0', referer: `${origin}/` };
 
-  // ---------- helpers ----------
+  // ----- utils -----
   function json(body, status=200){
-    return { statusCode: status, headers: { 'content-type':'application/json', 'cache-control':'no-store', 'access-control-allow-origin':'*' }, body: JSON.stringify(body) };
+    return { statusCode: status, headers: {
+      'content-type':'application/json','cache-control':'no-store','access-control-allow-origin':'*'
+    }, body: JSON.stringify(body) };
   }
   const toNum = v => (typeof v === 'string' ? parseFloat(v) : v);
   const isNum = n => typeof n === 'number' && isFinite(n);
-  const toRad = d => d*Math.PI/180;
-  const distKm = (a,b)=>{ const R=6371, dLat=toRad(b[0]-a[0]), dLon=toRad(b[1]-a[1]); const A=Math.sin(dLat/2)**2+Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2; return R*2*Math.atan2(Math.sqrt(A),Math.sqrt(1-A)); };
-  const inside = (lat,lng) => distKm(city.c, [lat,lng]) <= city.r;
+  const toRad = d => d * Math.PI / 180;
+  const distKm = (a,b)=>{ const R=6371,dLat=toRad(b[0]-a[0]),dLon=toRad(b[1]-a[1]);
+    const A=Math.sin(dLat/2)**2 + Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(A), Math.sqrt(1 - A));
+  };
+
+  // Strict vs soft “inside” checks (soft expands radius to catch zones even if today’s cars sit on the edge)
+  const insideStrict = (lat,lng) => distKm(city.c, [lat,lng]) <= city.r;
+  const insideSoft   = (lat,lng) => distKm(city.c, [lat,lng]) <= Math.max(city.r * 1.9, 60); // bigger net
 
   async function fetchJSON(url, timeoutMs=2400){
     const ctrl = new AbortController();
@@ -75,7 +85,7 @@ export async function handler(event) {
       const ct = r.headers.get('content-type')||'';
       if (!/json/i.test(ct)) return null;
       return await r.json();
-    }catch{ return null; } finally{ clearTimeout(t); }
+    }catch{ return null; } finally { clearTimeout(t); }
   }
 
   function extractLatLng(x){
@@ -91,24 +101,28 @@ export async function handler(event) {
     return null;
   }
 
-  // ---------- model names ----------
+  // ----- model names -----
   const modelById = new Map();
   try{
     const md = await fetchJSON(`${origin}/api/v1/car-models`, 3000);
     const arr = Array.isArray(md) ? md : (md?.carModels || []);
     for (const m of arr||[]){
       const id = m?.id ?? m?.modelId ?? m?.code;
-      if (id!=null) modelById.set(Number(id), { name:m.name || m.model || 'Vehicle', electric:!!m.electric, maxFuel:(typeof m.maxFuel==='number'?m.maxFuel:null) });
+      if (id!=null) modelById.set(Number(id), {
+        name: m.name || m.model || 'Vehicle',
+        electric: !!m.electric,
+        maxFuel: (typeof m.maxFuel==='number'?m.maxFuel:null)
+      });
     }
   }catch{}
 
   const modelFrom = (item)=>{
     const id = item.modelId ?? item.carModelId ?? item.model?.id ?? item.carModel?.id;
     if (id!=null && modelById.has(Number(id))) return modelById.get(Number(id));
-    return { name:item.modelName || item.name || item.model || 'Vehicle', electric:!!(item.electric ?? item.isElectric), maxFuel:null };
+    return { name: item.modelName || item.name || item.model || 'Vehicle', electric: !!(item.electric ?? item.isElectric), maxFuel: null };
   };
 
-  // ---------- availability ----------
+  // ----- availability -----
   function fields(x){
     const pct = toNum(x.fuel), rangeKm = toNum(x.range);
     return {
@@ -137,13 +151,13 @@ export async function handler(event) {
     return false; // unknown -> not free
   }
   function isFree_SOFT(f){
-    if (!f) return true;            // unknown -> include for discovery
-    if (isBusy(f)) return false;    // obvious busy -> exclude
+    if (!f) return true;         // unknown -> include (for discovery)
+    if (isBusy(f)) return false; // obvious busy -> exclude
     if (f.available === false) return false;
     return true;
   }
 
-  // ---------- zone fetch (mode: 'strict' | 'soft') ----------
+  // ----- zone fetch (mode: 'strict' | 'soft') -----
   async function fetchZone(zid, mode='strict'){
     const data = await fetchJSON(`${origin}/api/v1/cars?zoneId=${zid}&lastUpdate=0`, 2200);
     const list = Array.isArray(data) ? data : (Array.isArray(data?.cars) ? data.cars : []);
@@ -152,7 +166,10 @@ export async function handler(event) {
       const pos = extractLatLng(item); if (!pos) continue;
       const lat = Number(pos.lat), lng = Number(pos.lng);
       if (!isNum(lat)||!isNum(lng)) continue;
-      if (!inside(lat,lng)) continue;
+
+      // soft uses bigger radius; strict uses city radius
+      const inside = (mode === 'soft') ? insideSoft(lat,lng) : insideStrict(lat,lng);
+      if (!inside) continue;
 
       const f = fields(item);
       if (mode === 'strict' && !isFree_STRICT(f)) continue;
@@ -170,7 +187,8 @@ export async function handler(event) {
   }
 
   async function runZones(ids, mode='strict'){
-    const limit = 12; // high concurrency, still polite
+    // high concurrency, polite spacing
+    const limit = 12;
     let idx = 0;
     const cars = [];
     const used = new Set();
@@ -195,29 +213,31 @@ export async function handler(event) {
   }
 
   async function discoverZonesSoftThenStrict(){
-    // Probe a wide range once with SOFT filter just to learn zones (works even if no free cars now)
-    const RANGE = Array.from({ length: 200 }, (_, i) => i + 1); // up to 200 zones
-    const batches = [RANGE.slice(0,40), RANGE.slice(40,80), RANGE.slice(80,120), RANGE.slice(120,160), RANGE.slice(160,200)];
+    // Wide sweep with SOFT filter to learn zones even if city has no free cars now
+    const RANGE = Array.from({ length: 200 }, (_, i) => i + 1); // try up to 200 zoneIds
+    const batches = [RANGE.slice(0,50), RANGE.slice(50,100), RANGE.slice(100,150), RANGE.slice(150,200)];
     const zonesSet = new Set();
+
     for (const batch of batches){
       const { zones } = await runZones(batch, 'soft');
       zones.forEach(z => zonesSet.add(z));
-      // early-stop if we’ve found plenty of zones already
+      // early-stop once we have a healthy set
       if (zonesSet.size >= 25) break;
     }
-    const zones = Array.from(zonesSet);
-    if (!zones.length) return { cars: [], zones: [] };
 
-    // Now fetch those exact zones STRICTLY (available-only)
-    const { cars } = await runZones(zones, 'strict');
-    return { cars, zones };
+    const learned = Array.from(zonesSet);
+    if (!learned.length) return { cars: [], zones: [] };
+
+    // Now refetch those exact zones STRICT (available-only)
+    const { cars } = await runZones(learned, 'strict');
+    return { cars, zones: learned };
   }
 
-  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-  // ---------- main ----------
+  // ----- main -----
   if (zones && zones.length){
-    const { cars } = await runZones(zones, 'strict'); // fast path (available-only)
+    const { cars } = await runZones(zones, 'strict');   // fast path
     if (includeZones) return json({ cars, zones });
     return json(cars);
   }
@@ -226,6 +246,5 @@ export async function handler(event) {
   const disc = await discoverZonesSoftThenStrict();
   if (disc.zones.length){ S.zones = disc.zones; S.zonesTs = Date.now(); }
 
-  // If you call this from the browser with &includeZones=1 you’ll see the zones to paste into KNOWN_ZONES.
   return json(includeZones ? disc : { cars: disc.cars, zones: disc.zones });
 }
