@@ -1,10 +1,9 @@
-// Traficar proxy — city-only, AVAILABLE ONLY, fast soft→strict discovery + KNOWN_ZONES.
-// First call without zones: discover zones with a SOFT pass (bigger radius) so we always learn zones,
-// then fetch those zones STRICT (available-only). Returns { cars, zones }.
-// When zones are known (via KNOWN_ZONES, warm cache, or ?zones=...), it returns [ cars ] fast.
-// Add &includeZones=1 to always get { cars, zones } in your browser.
+// Traficar proxy — city-only, AVAILABLE ONLY, wide soft→strict discovery + KNOWN_ZONES.
+// First call without zones: soft (learn zones even if nothing is free) → strict (available-only).
+// When zones are known (KNOWN_ZONES, warm cache, or ?zones=...), it runs fast and returns [cars].
+// Add &includeZones=1 to always get {cars, zones} for debugging in the browser.
 
-let CITY_STATE = Object.create(null); // warm cache while the function instance lives
+let CITY_STATE = Object.create(null); // warm cache per instance
 
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
@@ -12,14 +11,14 @@ export async function handler(event) {
   const cityKey = (q.city || '').toLowerCase().trim();
   if (!cityKey) return json({ error: 'missing city' }, 400);
 
-  // City centres + radii (km). Slightly generous so we don’t clip edge cars.
+  // City centres + strict radii (km)
   const CITY = {
     krakow:     { c:[50.0614,19.9383], r:25 },
     warszawa:   { c:[52.2297,21.0122], r:35 },
-    wroclaw:    { c:[51.1079,17.0385], r:35 }, // widened
+    wroclaw:    { c:[51.1079,17.0385], r:35 },
     poznan:     { c:[52.4064,16.9252], r:28 },
-    trojmiasto: { c:[54.3722,18.6383], r:46 }, // Tri-city wide
-    slask:      { c:[50.2649,19.0238], r:50 }, // Silesian agglo wide
+    trojmiasto: { c:[54.3722,18.6383], r:46 },
+    slask:      { c:[50.2649,19.0238], r:50 },
     lublin:     { c:[51.2465,22.5684], r:24 },
     lodz:       { c:[51.7592,19.4550], r:28 },
     szczecin:   { c:[53.4285,14.5528], r:26 },
@@ -27,15 +26,21 @@ export async function handler(event) {
   };
   const city = CITY[cityKey] || CITY.krakow;
 
-  // 🔒 KNOWN_ZONES — fill these as you learn them. This makes cities instant.
+  // Softer discovery radius floors per city (km)
+  const SOFT_MIN = {
+    trojmiasto: 120, slask: 120,
+    warszawa: 100, wroclaw: 90, poznan: 90, krakow: 90, lublin: 90, lodz: 90, szczecin: 90, rzeszow: 90
+  };
+
+  // 🔒 Fill these as you learn them to make cities instant
   const KNOWN_ZONES = {
     krakow:    [1, 6],
     warszawa:  [2, 5],
     wroclaw:   [3],
-    poznan:    [],
+    poznan:    [4],
     trojmiasto:[],
     slask:     [6],
-    lublin:    [],
+    lublin:    [8],
     lodz:      [],
     szczecin:  [10],
     rzeszow:   []
@@ -47,18 +52,18 @@ export async function handler(event) {
     .map(s => Number(s.trim()))
     .filter(n => Number.isFinite(n) && n > 0);
 
-  // Per-city warm state (survives across calls while instance is warm)
+  // Warm per-city state
   const S = CITY_STATE[cityKey] ||= { zones: [], zonesTs: 0 };
 
-  // Prefer zones in this order: KNOWN_ZONES → ?zones= → warm cache
+  // Pick zones in priority: KNOWN_ZONES → querystring → warm cache
   let zones = null;
   if (KNOWN_ZONES[cityKey]?.length) zones = KNOWN_ZONES[cityKey];
   else if (zonesFromQS.length)       zones = zonesFromQS;
   else if (S.zones.length && Date.now() - S.zonesTs < 10*60*1000) zones = S.zones;
 
-  const headers = { accept:'application/json', 'user-agent':'Mozilla/5.0', referer: `${origin}/` };
+  const headers = { accept: 'application/json', 'user-agent': 'Mozilla/5.0', referer: `${origin}/` };
 
-  // ----- utils -----
+  // ---------- utils ----------
   function json(body, status=200){
     return { statusCode: status, headers: {
       'content-type':'application/json','cache-control':'no-store','access-control-allow-origin':'*'
@@ -66,17 +71,19 @@ export async function handler(event) {
   }
   const toNum = v => (typeof v === 'string' ? parseFloat(v) : v);
   const isNum = n => typeof n === 'number' && isFinite(n);
-  const toRad = d => d * Math.PI / 180;
-  const distKm = (a,b)=>{ const R=6371,dLat=toRad(b[0]-a[0]),dLon=toRad(b[1]-a[1]);
+  const toRad = d => d*Math.PI/180;
+  const distKm = (a,b)=>{ const R=6371, dLat=toRad(b[0]-a[0]), dLon=toRad(b[1]-a[1]);
     const A=Math.sin(dLat/2)**2 + Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(A), Math.sqrt(1 - A));
+    return R*2*Math.atan2(Math.sqrt(A), Math.sqrt(1-A));
+  };
+  const insideStrict = (lat,lng) => distKm(city.c, [lat,lng]) <= city.r;
+  const insideSoft = (lat,lng) => {
+    const min = SOFT_MIN[cityKey] || 90;
+    const softR = Math.max(city.r * 2.2, min); // bigger net for discovery
+    return distKm(city.c, [lat,lng]) <= softR;
   };
 
-  // Strict vs soft “inside” checks (soft expands radius to catch zones even if today’s cars sit on the edge)
-  const insideStrict = (lat,lng) => distKm(city.c, [lat,lng]) <= city.r;
-  const insideSoft   = (lat,lng) => distKm(city.c, [lat,lng]) <= Math.max(city.r * 1.9, 60); // bigger net
-
-  async function fetchJSON(url, timeoutMs=2400){
+  async function fetchJSON(url, timeoutMs=3000){
     const ctrl = new AbortController();
     const t = setTimeout(()=>ctrl.abort('timeout'), timeoutMs);
     try{
@@ -101,10 +108,10 @@ export async function handler(event) {
     return null;
   }
 
-  // ----- model names -----
+  // ---------- model names ----------
   const modelById = new Map();
   try{
-    const md = await fetchJSON(`${origin}/api/v1/car-models`, 3000);
+    const md = await fetchJSON(`${origin}/api/v1/car-models`, 3200);
     const arr = Array.isArray(md) ? md : (md?.carModels || []);
     for (const m of arr||[]){
       const id = m?.id ?? m?.modelId ?? m?.code;
@@ -122,7 +129,7 @@ export async function handler(event) {
     return { name: item.modelName || item.name || item.model || 'Vehicle', electric: !!(item.electric ?? item.isElectric), maxFuel: null };
   };
 
-  // ----- availability -----
+  // ---------- availability ----------
   function fields(x){
     const pct = toNum(x.fuel), rangeKm = toNum(x.range);
     return {
@@ -148,7 +155,7 @@ export async function handler(event) {
     if (isBusy(f)) return false;
     if (f.available === true) return true;
     if (typeof f.status === 'string' && /(FREE|AVAILABLE|READY|IDLE|OPEN)/i.test(f.status)) return true;
-    return false; // unknown -> not free
+    return false;
   }
   function isFree_SOFT(f){
     if (!f) return true;         // unknown -> include (for discovery)
@@ -157,9 +164,9 @@ export async function handler(event) {
     return true;
   }
 
-  // ----- zone fetch (mode: 'strict' | 'soft') -----
+  // ---------- zone fetch ----------
   async function fetchZone(zid, mode='strict'){
-    const data = await fetchJSON(`${origin}/api/v1/cars?zoneId=${zid}&lastUpdate=0`, 2200);
+    const data = await fetchJSON(`${origin}/api/v1/cars?zoneId=${zid}&lastUpdate=0`, mode==='soft'? 2600 : 2400);
     const list = Array.isArray(data) ? data : (Array.isArray(data?.cars) ? data.cars : []);
     const out = [];
     for (const item of list){
@@ -167,7 +174,6 @@ export async function handler(event) {
       const lat = Number(pos.lat), lng = Number(pos.lng);
       if (!isNum(lat)||!isNum(lng)) continue;
 
-      // soft uses bigger radius; strict uses city radius
       const inside = (mode === 'soft') ? insideSoft(lat,lng) : insideStrict(lat,lng);
       if (!inside) continue;
 
@@ -187,18 +193,16 @@ export async function handler(event) {
   }
 
   async function runZones(ids, mode='strict'){
-    // high concurrency, polite spacing
-    const limit = 12;
+    const limit = 14; // high but polite concurrency
     let idx = 0;
     const cars = [];
     const used = new Set();
-
     async function worker(){
       while (idx < ids.length){
         const zid = ids[idx++];
         const arr = await fetchZone(zid, mode);
         if (arr.length){ used.add(zid); cars.push(...arr); }
-        await sleep(35);
+        await sleep(30);
       }
     }
     await Promise.all(Array(Math.min(limit, ids.length)).fill(0).map(worker));
@@ -213,36 +217,34 @@ export async function handler(event) {
   }
 
   async function discoverZonesSoftThenStrict(){
-    // Wide sweep with SOFT filter to learn zones even if city has no free cars now
-    const RANGE = Array.from({ length: 200 }, (_, i) => i + 1); // try up to 200 zoneIds
-    const batches = [RANGE.slice(0,50), RANGE.slice(50,100), RANGE.slice(100,150), RANGE.slice(150,200)];
+    // Try across 1..600 with soft filter so we ALWAYS learn zones (even if no free cars)
+    const RANGE = Array.from({ length: 600 }, (_, i) => i + 1);
+    const batches = [RANGE.slice(0,100), RANGE.slice(100,200), RANGE.slice(200,300), RANGE.slice(300,400), RANGE.slice(400,500), RANGE.slice(500,600)];
     const zonesSet = new Set();
 
     for (const batch of batches){
       const { zones } = await runZones(batch, 'soft');
       zones.forEach(z => zonesSet.add(z));
-      // early-stop once we have a healthy set
-      if (zonesSet.size >= 25) break;
+      if (zonesSet.size >= 30) break; // enough zones learned
     }
-
     const learned = Array.from(zonesSet);
     if (!learned.length) return { cars: [], zones: [] };
 
-    // Now refetch those exact zones STRICT (available-only)
+    // Now fetch those zones strictly
     const { cars } = await runZones(learned, 'strict');
     return { cars, zones: learned };
   }
 
   function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-  // ----- main -----
+  // ---------- main ----------
   if (zones && zones.length){
-    const { cars } = await runZones(zones, 'strict');   // fast path
+    const { cars } = await runZones(zones, 'strict');             // fast path
     if (includeZones) return json({ cars, zones });
     return json(cars);
   }
 
-  // No zones known: discover with soft→strict so we *always* learn a zone list
+  // No zones known: discover (soft→strict) so we *always* learn zones
   const disc = await discoverZonesSoftThenStrict();
   if (disc.zones.length){ S.zones = disc.zones; S.zonesTs = Date.now(); }
 
