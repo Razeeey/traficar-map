@@ -280,11 +280,19 @@
           'scooter', 'pin-scooter',
           /* default */ 'pin-car'
         ],
-        'icon-size': 1,
+        // bigger pins as you zoom in
+        'icon-size': [
+          'interpolate', ['linear'], ['zoom'],
+          10, 0.9,   // far out
+          12, 1.2,
+          14, 1.6,
+          16, 2.0,   // neighborhood zoom
+          18, 2.4    // very close
+        ],
         'icon-allow-overlap': true
       }
     });
-
+    
     // overlays
     map.addSource('zones-relocation',{type:'geojson',data:emptyFC()});
     map.addSource('zones-nopark',{type:'geojson',data:emptyFC()});
