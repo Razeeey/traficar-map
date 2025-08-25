@@ -1,10 +1,9 @@
-// Fast, strict Traficar proxy with per-city cache + zone discovery.
-// - Strictly returns AVAILABLE cars (no rented/reserved/busy).
-// - Joins model names from /api/v1/car-models (no more "Vehicle").
-// - Discovers zones fast with timeouts + early-stop and then caches them per city.
-// - First call (no zones) -> { cars:[...], zones:[...] }  ; later with zones -> [ ...cars ]
+// Traficar proxy — city-only, AVAILABLE ONLY, very fast with KNOWN_ZONES + strict model join.
+// First call without zones: returns {cars, zones} (unless KNOWN_ZONES exists -> returns cars immediately).
+// Fast path with zones (either from KNOWN_ZONES or ?zones=...): returns [cars].
+// Add &includeZones=1 to always get {cars, zones} for debugging from your browser.
 
-let CITY_STATE = Object.create(null); // warm-instance cache
+let CITY_STATE = Object.create(null); // warm cache while the function instance is alive
 
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
@@ -12,7 +11,7 @@ export async function handler(event) {
   const cityKey = (q.city || '').toLowerCase().trim();
   if (!cityKey) return json({ error: 'missing city' }, 400);
 
-  // City centers + tuned radii (km). Widened a bit to avoid edge drops.
+  // City centers + radii (km)
   const CITY = {
     krakow:     { c:[50.0614,19.9383], r:25 },
     warszawa:   { c:[52.2297,21.0122], r:35 },
@@ -27,173 +26,160 @@ export async function handler(event) {
   };
   const city = CITY[cityKey] || CITY.krakow;
 
-  // Per-city state (zones + last cars cache)
-  const S = CITY_STATE[cityKey] ||= { zones: [], zonesTs: 0, cars: [], carsTs: 0 };
-
-  // Optional fast path via ?zones=1,2,3 (frontend caches this in localStorage)
-  const zonesParam = (q.zones || '').trim();
-  const zonesFromQS = zonesParam
-    ? zonesParam.split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n > 0)
-    : null;
-
-  const headers = {
-    accept: 'application/json',
-    'user-agent': 'Mozilla/5.0',
-    referer: `${origin}/`
+  // 🚀 KNOWN_ZONES: once we fill these, loads are instant even on cold starts.
+  // Put the numbers you collect (see Step 2 below). Empty arrays are fine.
+  const KNOWN_ZONES = {
+    krakow:    [],
+    warszawa:  [],
+    wroclaw:   [],
+    poznan:    [],
+    trojmiasto:[],
+    slask:     [],   // <= we'll fill this one for Śląsk
+    lublin:    [],
+    lodz:      [],
+    szczecin:  [],
+    rzeszow:   []
   };
 
-  // --------------- utils ---------------
-  function json(body, status = 200) {
-    return {
-      statusCode: status,
-      headers: {
-        'content-type': 'application/json',
-        'cache-control': 'no-store',
-        'access-control-allow-origin': '*'
-      },
-      body: JSON.stringify(body)
-    };
+  const includeZones = q.includeZones === '1';
+  const zonesParam = (q.zones || '').trim();
+  const zonesFromQS = zonesParam ? zonesParam.split(',').map(s=>Number(s.trim())).filter(n=>Number.isFinite(n)&&n>0) : null;
+
+  // Per-city warm state
+  const S = CITY_STATE[cityKey] ||= { zones: [], zonesTs: 0 };
+
+  // Use any known list in priority order
+  let zones = null;
+  if (Array.isArray(KNOWN_ZONES[cityKey]) && KNOWN_ZONES[cityKey].length) zones = KNOWN_ZONES[cityKey];
+  else if (zonesFromQS && zonesFromQS.length) zones = zonesFromQS;
+  else if (S.zones && S.zones.length && (Date.now()-S.zonesTs)<10*60*1000) zones = S.zones;
+
+  const headers = { accept: 'application/json', 'user-agent': 'Mozilla/5.0', referer: `${origin}/` };
+
+  // ---------- helpers ----------
+  function json(body, status=200){
+    return { statusCode: status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' }, body: JSON.stringify(body) };
   }
   const toNum = v => (typeof v === 'string' ? parseFloat(v) : v);
   const isNum = n => typeof n === 'number' && isFinite(n);
-  const toRad = d => d * Math.PI / 180;
-  const distKm = (a, b) => {
-    const R = 6371, dLat = toRad(b[0] - a[0]), dLon = toRad(b[1] - a[1]);
-    const A = Math.sin(dLat/2)**2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLon/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(A), Math.sqrt(1 - A));
-  };
-  const inside = (lat, lng) => distKm(city.c, [lat, lng]) <= city.r;
+  const toRad = d => d*Math.PI/180;
+  const distKm = (a,b)=>{const R=6371,dLat=toRad(b[0]-a[0]),dLon=toRad(b[1]-a[1]);const A=Math.sin(dLat/2)**2+Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(A),Math.sqrt(1-A));};
+  const inside = (lat,lng) => distKm(city.c, [lat,lng]) <= city.r;
 
-  async function fetchJSON(url, timeoutMs = 3000) {
+  async function fetchJSON(url, timeoutMs=2800){
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort('timeout'), timeoutMs);
-    try {
+    const t = setTimeout(()=>ctrl.abort('timeout'), timeoutMs);
+    try{
       const r = await fetch(url, { headers, signal: ctrl.signal });
       if (!r.ok) return null;
-      const ct = r.headers.get('content-type') || '';
+      const ct = r.headers.get('content-type')||'';
       if (!/json/i.test(ct)) return null;
       return await r.json();
-    } catch {
-      return null;
-    } finally {
-      clearTimeout(t);
-    }
+    }catch{ return null; } finally{ clearTimeout(t); }
   }
 
-  function extractLatLng(x) {
-    let lat = x.lat ?? x.latitude, lng = x.lng ?? x.lon ?? x.longitude;
+  function extractLatLng(x){
+    let lat = x.lat ?? x.latitude ?? x.latE6, lng = x.lng ?? x.lon ?? x.longitude ?? x.lngE6;
     lat = toNum(lat); lng = toNum(lng);
-    if (isNum(lat) && isNum(lng)) return { lat, lng };
-    // geometry fallback
-    if (x.geometry?.coordinates?.length >= 2) {
+    if (Math.abs(lat)>1000) lat /= 1e6;
+    if (Math.abs(lng)>1000) lng /= 1e6;
+    if (isNum(lat)&&isNum(lng)) return {lat,lng};
+    if (x.geometry?.coordinates?.length>=2){
       const LON = toNum(x.geometry.coordinates[0]), LAT = toNum(x.geometry.coordinates[1]);
-      if (isNum(LAT) && isNum(LON)) return { lat: LAT, lng: LON };
+      if (isNum(LAT)&&isNum(LON)) return {lat:LAT,lng:LON};
     }
     return null;
   }
 
-  // --------------- model dictionary (for names) ---------------
+  // ---------- model dictionary ----------
   const modelById = new Map();
-  try {
-    const models = await fetchJSON(`${origin}/api/v1/car-models`, 3500);
-    const arr = Array.isArray(models) ? models : (models?.carModels || []);
-    for (const m of arr || []) {
+  try{
+    const md = await fetchJSON(`${origin}/api/v1/car-models`, 3500);
+    const arr = Array.isArray(md) ? md : (md?.carModels || []);
+    for (const m of arr||[]){
       const id = m?.id ?? m?.modelId ?? m?.code;
-      if (id != null) modelById.set(Number(id), {
-        name: m.name || m.model || 'Vehicle',
-        electric: !!m.electric,
-        maxFuel: (typeof m.maxFuel === 'number' ? m.maxFuel : null)
-      });
+      if (id!=null) modelById.set(Number(id), { name: m.name || m.model || 'Vehicle', electric: !!m.electric, maxFuel: (typeof m.maxFuel==='number'?m.maxFuel:null) });
     }
-  } catch {}
+  }catch{}
 
-  const modelFrom = (item) => {
+  function modelFrom(item){
     const id = item.modelId ?? item.carModelId ?? item.model?.id ?? item.carModel?.id;
-    if (id != null && modelById.has(Number(id))) return modelById.get(Number(id));
+    if (id!=null && modelById.has(Number(id))) return modelById.get(Number(id));
     return { name: item.modelName || item.name || item.model || 'Vehicle', electric: !!(item.electric ?? item.isElectric), maxFuel: null };
-  };
+    }
 
-  // --------------- availability (STRICT) ---------------
-  function fields(x) {
-    const pct = toNum(x.fuel);
-    const rangeKm = toNum(x.range);
+  // ---------- availability (STRICT) ----------
+  function fields(x){
+    const pct = toNum(x.fuel), rangeKm = toNum(x.range);
     return {
       plate: x.regPlate ? String(x.regPlate).trim().toUpperCase() : null,
-      number: (x.sideNumber != null) ? String(x.sideNumber).trim().toUpperCase() : null,
-      pct: isNum(pct) ? Math.round(Math.max(0, Math.min(100, pct))) : null,
+      number: (x.sideNumber!=null) ? String(x.sideNumber).trim().toUpperCase() : null,
+      pct: isNum(pct) ? Math.round(Math.max(0,Math.min(100,pct))) : null,
       rangeKm: isNum(rangeKm) ? Math.round(rangeKm) : null,
       address: typeof x.location === 'string' ? x.location : '',
-      status: typeof x.status === 'string' ? x.status : '',
-      reserved: x.reserved ?? x.isReserved,
-      rented: x.isRented ?? x.rented,
-      available: x.available
+      // flags seen in wild
+      available: x.available ?? x.isAvailable ?? x.availableNow ?? x.free ?? x.isFree,
+      reserved: x.reserved ?? x.isReserved ?? x.reservationActive ?? (x.reservationId!=null),
+      rented:   x.isRented ?? x.rented ?? x.inRental ?? x.inUse,
+      status:   x.status ?? x.statusText ?? x.state ?? x.availability ?? ''
     };
   }
-  function busy(f) {
-    if (f.reserved === true) return true;
-    if (f.rented === true) return true;
-    if (typeof f.status === 'string' && /(RENT|RENTED|BUSY|RESERV|OCCUP|UNAVAIL|TAKEN|MAINT)/i.test(f.status)) return true;
-    return false;
-  }
-  function isFree_STRICT(f) {
+  function isFree_STRICT(f){
     if (!f) return false;
-    if (busy(f)) return false;
+    if (f.reserved === true) return false;
+    if (f.rented === true) return false;
     if (f.available === true) return true;
-    if (typeof f.status === 'string' && /(FREE|AVAILABLE|READY)/i.test(f.status)) return true;
-    return false; // unknown or available:false -> not free
+    if (typeof f.status === 'string'){
+      const s = f.status.toUpperCase();
+      if (/(RENT|RENTED|BUSY|RESERV|OCCUP|UNAVAIL|TAKEN|MAINT|SERVICE|IN_USE)/.test(s)) return false;
+      if (/(FREE|AVAILABLE|READY|IDLE|OPEN)/.test(s)) return true;
+    }
+    return false; // unknown -> not free
   }
 
-  // --------------- zone fetch ---------------
-  async function fetchZone(zid) {
-    const data = await fetchJSON(`${origin}/api/v1/cars?zoneId=${zid}&lastUpdate=0`, 2500);
+  // ---------- zone fetch ----------
+  async function fetchZone(zid){
+    const data = await fetchJSON(`${origin}/api/v1/cars?zoneId=${zid}&lastUpdate=0`, 2600);
     const list = Array.isArray(data) ? data : (Array.isArray(data?.cars) ? data.cars : []);
     const out = [];
-    for (const item of list) {
+    for (const item of list){
       const pos = extractLatLng(item); if (!pos) continue;
       const lat = Number(pos.lat), lng = Number(pos.lng);
-      if (!isNum(lat) || !isNum(lng)) continue;
-      if (!inside(lat, lng)) continue;
+      if (!isNum(lat)||!isNum(lng)) continue;
+      if (!inside(lat,lng)) continue;
 
       const f = fields(item);
-      if (!isFree_STRICT(f)) continue; // AVAILABLE ONLY
+      if (!isFree_STRICT(f)) continue;
 
       const meta = modelFrom(item);
       out.push({
         id: item.id ?? item.vehicleId ?? item.carId ?? item.code ?? null,
         lat, lng,
-        model: meta.name,
-        isElectric: !!meta.electric,
-        maxFuel: meta.maxFuel,
+        model: meta.name, isElectric: !!meta.electric, maxFuel: meta.maxFuel,
         plate: f.plate, number: f.number, pct: f.pct, rangeKm: f.rangeKm, address: f.address
       });
     }
     return out;
   }
 
-  async function runZones(ids, maxMs = 4000) {
-    // small concurrency + early-stop to keep first paint snappy
-    const start = Date.now();
-    const limit = 8;
+  async function runZones(ids){
+    // higher concurrency but polite, and no early-stop (we want completeness once zones are known)
+    const limit = 12;
     let idx = 0;
     const cars = [];
     const used = new Set();
 
-    async function worker() {
-      while (idx < ids.length) {
+    async function worker(){
+      while (idx < ids.length){
         const zid = ids[idx++];
         const arr = await fetchZone(zid);
         if (arr.length) { used.add(zid); cars.push(...arr); }
-        // early stop if good enough or time is up
-        if (cars.length >= 60 || used.size >= 12 || (Date.now() - start) > maxMs) break;
-        await sleep(60);
+        await sleep(40);
       }
     }
-    await Promise.race([
-      Promise.all(Array(Math.min(limit, ids.length)).fill(0).map(worker)),
-      sleep(maxMs + 500)
-    ]);
+    await Promise.all(Array(Math.min(limit, ids.length)).fill(0).map(worker));
 
-    // de-dup
+    // de-dup by plate/number/coords
     const seen = new Set();
     const unique = cars.filter(v => {
       const key = `${v.plate||v.number||v.id||''}|${v.lat.toFixed(6)}|${v.lng.toFixed(6)}`;
@@ -202,39 +188,41 @@ export async function handler(event) {
     return { cars: unique, zones: Array.from(used) };
   }
 
-  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-  // --------------- main ---------------
-  // If zones were provided via QS -> FAST PATH
-  if (zonesFromQS && zonesFromQS.length) {
-    const { cars } = await runZones(zonesFromQS, 3000);
-    if (cars.length) {
-      S.cars = cars; S.carsTs = Date.now();
-      return json(cars);
+  async function discoverZones(){
+    // Wide sweep once; returns as soon as finished (no early-stop to stabilize zone list).
+    const RANGE = Array.from({length: 60}, (_,i)=>i+1);
+    // use smaller batches to keep sockets open
+    const batches = [RANGE.slice(0,20), RANGE.slice(20,40), RANGE.slice(40,60)];
+    const cars=[], zonesSet = new Set();
+    for (const batch of batches){
+      const {cars: cc, zones: zz} = await runZones(batch);
+      cars.push(...cc); zz.forEach(z=>zonesSet.add(z));
     }
-    // fallback to last cache for this city if upstream is empty/flaky
-    if (S.cars && S.cars.length) return json(S.cars);
-    return json([]); // nothing known yet
+    return { cars: dedup(cars), zones: Array.from(zonesSet) };
   }
 
-  // Use cached zones if fresh (<10 min)
-  const zonesFresh = S.zones && S.zones.length && (Date.now() - S.zonesTs) < 10 * 60 * 1000;
-  if (zonesFresh) {
-    const { cars } = await runZones(S.zones, 3000);
-    if (cars.length) { S.cars = cars; S.carsTs = Date.now(); return json(cars); }
-    // if upstream hiccups, serve last cars cache if recent (<90s)
-    if (S.cars && (Date.now() - S.carsTs) < 90 * 1000) return json(S.cars);
+  function dedup(arr){
+    const seen = new Set();
+    return arr.filter(v => {
+      const key = `${v.plate||v.number||v.id||''}|${v.lat.toFixed(6)}|${v.lng.toFixed(6)}`;
+      if (seen.has(key)) return false; seen.add(key); return true;
+    });
   }
 
-  // DISCOVERY: probe zones in batches up to 1..60 (w/ early-stop)
-  const R = Array.from({ length: 60 }, (_, i) => i + 1);
-  const disc = await runZones(R, 4500);
-  if (disc.zones.length) { S.zones = disc.zones; S.zonesTs = Date.now(); }
-  if (disc.cars.length)   { S.cars  = disc.cars;  S.carsTs  = Date.now(); }
+  function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-  // Return cars + zones so the frontend can cache zones and go fast next time
-  if (disc.cars.length) return json({ cars: disc.cars, zones: disc.zones });
-  // fallback: if nothing now, but we have a previous cache, serve it
-  if (S.cars && S.cars.length) return json({ cars: S.cars, zones: S.zones || [] });
-  return json({ cars: [], zones: [] });
+  // ---------- main ----------
+  if (zones && zones.length){
+    const { cars } = await runZones(zones);
+    if (includeZones) return json({ cars, zones });
+    return json(cars);
+  }
+
+  // No zones yet: discover and remember
+  const disc = await discoverZones();
+  if (disc.zones.length){ S.zones = disc.zones; S.zonesTs = Date.now(); }
+
+  // If you hit the function in your browser, you’ll see the zones so you can paste them into KNOWN_ZONES later.
+  return json(includeZones ? disc : { cars: disc.cars, zones: disc.zones });
+
 }
