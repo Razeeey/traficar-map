@@ -35,7 +35,7 @@
     position:fixed; right:12px; top:64px; z-index:11;
     background:rgba(23,23,28,.92); backdrop-filter: blur(8px);
     border:1px solid rgba(255,255,255,.08); border-radius:12px;
-    padding:10px 12px; width:210px; box-shadow:var(--shadow);
+    padding:10px 12px; width:220px; box-shadow:var(--shadow);
   }
   .panel h4{margin:6px 0 8px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
   .panel label{display:flex; align-items:center; gap:8px; margin:6px 0; font-size:14px}
@@ -88,8 +88,10 @@
 
 <script>
 (function(){
+  // 1) Put your MapTiler key here — in quotes:
   const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC';
-  const API_CARS = '/.netlify/functions/traficar-auto';
+
+  const API_CARS  = '/.netlify/functions/traficar-auto';
   const API_AREAS = '/.netlify/functions/traficar-areas';
 
   const centers = {
@@ -113,13 +115,14 @@
   citySel.value = initialCity;
   let currentCity = citySel.value;
 
-  // selected models (multi-select); by default, "all"
-  let selectedModels = new Set(); // empty = all
+  // model selection state per city; empty set means "ALL"
+  const modelSelections = new Map(); // city -> Set(modelName)
+  const modelOptions    = new Map(); // city -> {car:[..],van:[..],scooter:[..]}
 
   // map
   const map = new maplibregl.Map({
     container:'map',
-    style:`https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
+    style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
     center: centers[initialCity],
     zoom: centers[initialCity].z,
     attributionControl:true
@@ -128,7 +131,6 @@
 
   // sources & layers
   map.on('load', async () => {
-    // cars source with clusterProperties (counts per kind)
     map.addSource('cars', {
       type:'geojson',
       data: emptyFC(),
@@ -140,7 +142,7 @@
       }
     });
 
-    // cluster pies (symbol with runtime images)
+    // Pie cluster icons + number text
     map.addLayer({
       id:'clusters-pie', type:'symbol', source:'cars', filter:['has','point_count'],
       layout:{
@@ -156,17 +158,16 @@
       paint:{ 'text-color':'#ffffff', 'text-halo-color':'#111', 'text-halo-width':1.2 }
     });
 
-    // unclustered points
+    // Unclustered points
     map.addLayer({
       id:'unclustered', type:'circle', source:'cars', filter:['!',['has','point_count']],
       paint:{
-        // color by fuel
         'circle-color':[
           'case',
-          ['!', ['has','pct']], '#8e8e93',
-          ['>=', ['get','pct'], 50], '#3ddc84',
-          ['>=', ['get','pct'], 20], '#ffb020',
-          '#ff6b6b'
+            ['!', ['has','pct']], '#8e8e93',
+            ['>=', ['get','pct'], 50], '#3ddc84',
+            ['>=', ['get','pct'], 20], '#ffb020',
+            '#ff6b6b'
         ],
         'circle-stroke-color':'#111',
         'circle-stroke-width':2,
@@ -174,39 +175,19 @@
       }
     });
 
-    // overlays
+    // Area overlays
     map.addSource('zones-relocation', { type:'geojson', data: emptyFC() });
     map.addSource('zones-nopark',     { type:'geojson', data: emptyFC() });
     map.addSource('zones-ogarniam',   { type:'geojson', data: emptyFC() });
 
-    map.addLayer({
-      id:'relocation-fill', type:'fill', source:'zones-relocation',
-      paint:{ 'fill-color':'#ffd500', 'fill-opacity':0.22 }
-    });
-    map.addLayer({
-      id:'relocation-outline', type:'line', source:'zones-relocation',
-      paint:{ 'line-color':'#ffd500', 'line-width':2 }
-    });
+    map.addLayer({ id:'relocation-fill', type:'fill', source:'zones-relocation', paint:{ 'fill-color':'#ffd500', 'fill-opacity':0.22 }});
+    map.addLayer({ id:'relocation-outline', type:'line', source:'zones-relocation', paint:{ 'line-color':'#ffd500', 'line-width':2 }});
+    map.addLayer({ id:'nopark-fill', type:'fill', source:'zones-nopark', paint:{ 'fill-color':'#ff4d4d', 'fill-opacity':0.28 }});
+    map.addLayer({ id:'nopark-outline', type:'line', source:'zones-nopark', paint:{ 'line-color':'#ff4d4d', 'line-width':1.5, 'line-dasharray':[2,2] }});
+    map.addLayer({ id:'ogarniam-fill', type:'fill', source:'zones-ogarniam', paint:{ 'fill-color':'#a56cff', 'fill-opacity':0.16 }});
+    map.addLayer({ id:'ogarniam-outline', type:'line', source:'zones-ogarniam', paint:{ 'line-color':'#a56cff', 'line-width':2 }});
 
-    map.addLayer({
-      id:'nopark-fill', type:'fill', source:'zones-nopark',
-      paint:{ 'fill-color':'#ff4d4d', 'fill-opacity':0.28 }
-    });
-    map.addLayer({
-      id:'nopark-outline', type:'line', source:'zones-nopark',
-      paint:{ 'line-color':'#ff4d4d', 'line-width':1.5, 'line-dasharray':[2,2] }
-    });
-
-    map.addLayer({
-      id:'ogarniam-fill', type:'fill', source:'zones-ogarniam',
-      paint:{ 'fill-color':'#a56cff', 'fill-opacity':0.16 }
-    });
-    map.addLayer({
-      id:'ogarniam-outline', type:'line', source:'zones-ogarniam',
-      paint:{ 'line-color':'#a56cff', 'line-width':2 }
-    });
-
-    // interactivity
+    // popup
     map.on('click','unclustered', (e)=>{
       const v = e.features[0].properties;
       const [lng,lat] = e.features[0].geometry.coordinates;
@@ -231,97 +212,47 @@
       new maplibregl.Popup({ closeButton:true, offset:12 }).setLngLat([lng,lat]).setHTML(html).addTo(map);
     });
 
-    map.on('mouseenter','unclustered', ()=> map.getCanvas().style.cursor='pointer');
-    map.on('mouseleave','unclustered', ()=> map.getCanvas().style.cursor='');
-
-    // generate pie images whenever clusters change
-    map.on('idle', generatePieImages);
+    // Generate pie icons on demand (fixes “numbers only”)
+    const PIE_CACHE = new Set();
+    map.on('styleimagemissing', (e) => {
+      const m = /^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id);
+      if (!m || PIE_CACHE.has(e.id)) return;
+      const c = +m[1], v = +m[2], s = +m[3];
+      const img = makePie(c,v,s);
+      try { map.addImage(e.id, img, { pixelRatio:2 }); PIE_CACHE.add(e.id); } catch {}
+    });
 
     // first load
-    await loadAll(true);
+    await loadAll(true, { fit:true });
   });
 
-  // pie cache + generator (purple=car, dark-blue=van, turquoise=scooter)
-  const PIE_CACHE = new Set();
-  function pieName(c,v,s){ return `pie_${c}_${v}_${s}`; }
-  function generatePieImages(){
-    const feats = map.queryRenderedFeatures({ layers:['clusters-pie'] });
-    const seen = new Set();
-    for(const f of feats){
-      const c = f.properties.car|0, v = f.properties.van|0, s = f.properties.scooter|0;
-      const name = pieName(c,v,s);
-      if (seen.has(name) || PIE_CACHE.has(name)) continue;
-      seen.add(name);
-      const img = makePie(c,v,s);
-      try{ map.addImage(name, img, { pixelRatio:2 }); PIE_CACHE.add(name); }catch{}
-    }
-  }
+  // pie drawing
   function makePie(c,v,s){
     const size = 64; const r = size/2;
-    const cvs = document.createElement('canvas'); cvs.width = size; cvs.height = size;
+    const cvs = document.createElement('canvas'); cvs.width=size; cvs.height=size;
     const g = cvs.getContext('2d');
-
-    // background ring
+    // base ring
     g.beginPath(); g.arc(r,r,r-2,0,Math.PI*2); g.fillStyle='#3e3e45'; g.fill();
-
     const total = Math.max(1, c+v+s);
     let start = -Math.PI/2;
-    function slice(val, color){
-      const ang = (val/total) * Math.PI*2;
-      g.beginPath();
-      g.moveTo(r,r);
-      g.arc(r,r,r-4,start,start+ang,false);
-      g.closePath();
-      g.fillStyle = color;
-      g.fill();
-      start += ang;
-    }
-    // purple cars, dark-blue vans, turquoise scooters
-    slice(c, '#7b4bff');
-    slice(v, '#1d4ed8');
-    slice(s, '#2dd4bf');
-
-    // inner center disk
-    g.beginPath(); g.arc(r,r, r-18, 0, Math.PI*2); g.fillStyle='#121218'; g.fill();
-    // subtle border
-    g.beginPath(); g.arc(r,r, r-1, 0, Math.PI*2); g.strokeStyle='#111'; g.lineWidth=2; g.stroke();
-
+    const slice = (val,color)=>{
+      const ang = (val/total)*Math.PI*2;
+      g.beginPath(); g.moveTo(r,r); g.arc(r,r,r-4,start,start+ang,false); g.closePath();
+      g.fillStyle=color; g.fill(); start+=ang;
+    };
+    slice(c,'#7b4bff'); // cars (purple)
+    slice(v,'#1d4ed8'); // vans (dark blue)
+    slice(s,'#2dd4bf'); // scooters (turquoise)
+    // inner disk
+    g.beginPath(); g.arc(r,r,r-18,0,Math.PI*2); g.fillStyle='#121218'; g.fill();
+    g.beginPath(); g.arc(r,r,r-1,0,Math.PI*2); g.strokeStyle='#111'; g.lineWidth=2; g.stroke();
     return cvs;
   }
 
-  // state
-  let cityCache = new Map(); // city -> { cars:[], modelsByKind:{car:[],van:[],scooter:[]}, zones:{relocation,nopark,ogarniam} }
-  let latestReq = 0;
+  // ---------- state & helpers ----------
   let timer = null;
-
-  // UI handlers
-  citySel.addEventListener('change', ()=>{
-    currentCity = citySel.value;
-    const cfg = centers[currentCity] || centers.krakow;
-    const p = new URLSearchParams(location.search); p.set('city', currentCity); history.replaceState(null,'',`?${p.toString()}`);
-    if (timer) { clearTimeout(timer); timer=null; }
-    map.getSource('cars')?.setData(emptyFC());
-    setCount(0);
-    selectedModels.clear();
-    renderModelList({car:[],van:[],scooter:[]});
-    map.easeTo({ center: cfg, zoom: cfg.z });
-    loadAll(true);
-  });
-
-  refreshBtn.addEventListener('click', ()=> loadAll());
-
-  // zones toggle
-  [relCB, nopCB, ogCB].forEach(cb => cb.addEventListener('change', ()=>{
-    map.setLayoutProperty('relocation-fill','visibility', relCB.checked ? 'visible' : 'none');
-    map.setLayoutProperty('relocation-outline','visibility', relCB.checked ? 'visible' : 'none');
-    map.setLayoutProperty('nopark-fill','visibility',     nopCB.checked ? 'visible' : 'none');
-    map.setLayoutProperty('nopark-outline','visibility',   nopCB.checked ? 'visible' : 'none');
-    map.setLayoutProperty('ogarniam-fill','visibility',    ogCB.checked  ? 'visible' : 'none');
-    map.setLayoutProperty('ogarniam-outline','visibility', ogCB.checked  ? 'visible' : 'none');
-  }));
-
-  function setCount(n){ countEl.textContent = `${n} ${n===1?'car':'cars'}`; }
   function emptyFC(){ return { type:'FeatureCollection', features: [] }; }
+  function setCount(n){ countEl.textContent = `${n} ${n===1?'car':'cars'}`; }
 
   function toGeo(data){
     return {
@@ -341,65 +272,108 @@
     };
   }
 
-  function renderForCity(city, cars){
-    if (city !== currentCity) return;
-    // client-side model filter
-    const allowAll = selectedModels.size === 0;
-    const filtered = cars.filter(v => allowAll || selectedModels.has(v.model));
-
-    // push to map
+  function applyFilterAndRender({fit=false}={}){
+    const all = window.__CITY_CACHE?.cars || [];
+    const chosen = modelSelections.get(currentCity);
+    const allowAll = !chosen || chosen.size===0;
+    const filtered = all.filter(v => allowAll || chosen.has(v.model));
     map.getSource('cars')?.setData(toGeo(filtered));
     setCount(filtered.length);
-
-    if (filtered.length){
+    if (fit && filtered.length){
       const b = new maplibregl.LngLatBounds();
       filtered.forEach(v => b.extend([Number(v.lng), Number(v.lat)]));
       try { map.fitBounds(b, { padding: 60, maxZoom: 15 }); } catch {}
     }
   }
 
-  function renderModelList(groups){
-    // groups: {car:[names], van:[names], scooter:[names]}
+  // Build model checklist once per city; preserve user selection
+  function buildModelPanel(grouped){
+    modelOptions.set(currentCity, grouped);
+    const prev = modelSelections.get(currentCity) || new Set(); // what the user already chose
+    const keepChecked = (name) => prev.size===0 || prev.has(name); // default = all checked if no prior choice
+
     const carsDiv = document.getElementById('models-cars');
     const vansDiv = document.getElementById('models-vans');
     const scootDiv= document.getElementById('models-scooters');
+
     function fill(el, arr){
       el.innerHTML = '';
       arr.sort((a,b)=>a.localeCompare(b,'pl')).forEach(name=>{
-        const id = `mdl-${name.replace(/\W+/g,'-')}`;
+        const id = `${currentCity}-mdl-${name.replace(/\W+/g,'-')}`;
         const wrap = document.createElement('label');
-        wrap.innerHTML = `<input type="checkbox" id="${id}" checked> ${name}`;
+        wrap.innerHTML = `<input type="checkbox" id="${id}"> ${name}`;
         const cb = wrap.querySelector('input');
+        cb.checked = keepChecked(name);
         cb.addEventListener('change', ()=>{
-          if (cb.checked) selectedModels.add(name); else selectedModels.delete(name);
-          // special rule: empty set means "all"
-          const anyChecked = [...document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input')].some(x=>x.checked);
-          if (!anyChecked) selectedModels.clear();
-          const cache = cityCache.get(currentCity);
-          if (cache?.cars) renderForCity(currentCity, cache.cars);
+          const set = modelSelections.get(currentCity) || new Set([...arrFromAll()]);
+          if (cb.checked) set.add(name); else set.delete(name);
+          // If the set becomes "all" or "none", normalize to empty (meaning ALL)
+          const allNames = arrFromAll();
+          const allCount = allNames.length;
+          const selectedCount = set.size;
+          if (selectedCount===0 || selectedCount===allCount) {
+            modelSelections.set(currentCity, new Set()); // ALL
+          } else {
+            modelSelections.set(currentCity, set);
+          }
+          applyFilterAndRender({fit:false}); // don’t recenter on filter change
         });
-        selectedModels.add(name); // default checked
         el.appendChild(wrap);
       });
     }
-    selectedModels.clear(); // reset then re-add defaults
-    fill(carsDiv, groups.car||[]);
-    fill(vansDiv, groups.van||[]);
-    fill(scootDiv, groups.scooter||[]);
+    function arrFromAll(){
+      const g = grouped || {car:[],van:[],scooter:[]};
+      return [...(g.car||[]), ...(g.van||[]), ...(g.scooter||[])];
+    }
+
+    fill(carsDiv, grouped.car||[]);
+    fill(vansDiv, grouped.van||[]);
+    fill(scootDiv, grouped.scooter||[]);
+    // normalize initial selection: if nothing explicitly chosen, treat as ALL
+    if (!modelSelections.has(currentCity)) modelSelections.set(currentCity, new Set());
   }
 
-  async function loadAll(forceDiscover=false){
-    const reqId = ++latestReq;
+  // UI events
+  citySel.addEventListener('change', ()=>{
+    currentCity = citySel.value;
+    const cfg = centers[currentCity] || centers.krakow;
+    const p = new URLSearchParams(location.search); p.set('city', currentCity); history.replaceState(null,'',`?${p.toString()}`);
+    clearTimeout(timer);
+    map.getSource('cars')?.setData(emptyFC());
+    setCount(0);
+    map.easeTo({ center: cfg, zoom: cfg.z }); // move only on city change
+    loadAll(true, { fit:true });
+  });
+
+  refreshBtn.addEventListener('click', ()=> loadAll(false, { fit:false }));
+
+  // overlay toggles
+  document.getElementById('toggle-rel').addEventListener('change', (e)=>{
+    map.setLayoutProperty('relocation-fill','visibility', e.target.checked ? 'visible' : 'none');
+    map.setLayoutProperty('relocation-outline','visibility', e.target.checked ? 'visible' : 'none');
+  });
+  document.getElementById('toggle-nop').addEventListener('change', (e)=>{
+    map.setLayoutProperty('nopark-fill','visibility', e.target.checked ? 'visible' : 'none');
+    map.setLayoutProperty('nopark-outline','visibility', e.target.checked ? 'visible' : 'none');
+  });
+  document.getElementById('toggle-og').addEventListener('change', (e)=>{
+    map.setLayoutProperty('ogarniam-fill','visibility', e.target.checked ? 'visible' : 'none');
+    map.setLayoutProperty('ogarniam-outline','visibility', e.target.checked ? 'visible' : 'none');
+  });
+
+  // global cache for current city’s cars (kept simple)
+  window.__CITY_CACHE = { cars: [] };
+
+  async function loadAll(first=false, {fit=false}={}){
     // cars
     try{
       const qs = new URLSearchParams({ city: currentCity });
       const cachedZones = localStorage.getItem(`traficar_zones_${currentCity}`);
-      if (cachedZones && !forceDiscover){
+      if (cachedZones && !first){
         try{ const z = JSON.parse(cachedZones); if (Array.isArray(z.zones) && (Date.now()-z.ts<10*60*1000)) qs.set('zones', z.zones.join(',')); }catch{}
       }
       const res = await fetch(`${API_CARS}?${qs.toString()}`);
       const data = await res.json();
-      if (reqId !== latestReq) return;
 
       let cars, zones;
       if (Array.isArray(data)) { cars = data; }
@@ -409,28 +383,33 @@
         localStorage.setItem(`traficar_zones_${currentCity}`, JSON.stringify({ zones, ts: Date.now() }));
       }
 
-      // group models by kind for the checklist
+      // group models by kind for the checklist; only rebuild if the set changed
       const byKind = { car:new Set(), van:new Set(), scooter:new Set() };
       for (const v of cars) if (v && v.model) (byKind[v.kind||'car']||byKind.car).add(v.model);
-      renderModelList({ car:[...byKind.car], van:[...byKind.van], scooter:[...byKind.scooter] });
+      const grouped = { car:[...byKind.car], van:[...byKind.van], scooter:[...byKind.scooter] };
+      const prevGrouped = modelOptions.get(currentCity);
+      const same =
+        prevGrouped &&
+        JSON.stringify([...prevGrouped.car].sort())     === JSON.stringify([...grouped.car].sort()) &&
+        JSON.stringify([...prevGrouped.van].sort())     === JSON.stringify([...grouped.van].sort()) &&
+        JSON.stringify([...prevGrouped.scooter].sort()) === JSON.stringify([...grouped.scooter].sort());
+      if (!same) buildModelPanel(grouped); // preserves previous selection where possible
 
-      cityCache.set(currentCity, { cars });
-      renderForCity(currentCity, cars);
+      window.__CITY_CACHE.cars = cars;
+      applyFilterAndRender({fit}); // fit only on first load / city change
     }catch(e){ console.error(e); }
 
     // areas
     try{
       const res = await fetch(`${API_AREAS}?city=${encodeURIComponent(currentCity)}`);
       const areas = await res.json();
-      if (reqId !== latestReq) return;
       if (areas?.relocation) map.getSource('zones-relocation')?.setData(areas.relocation);
       if (areas?.nopark)     map.getSource('zones-nopark')?.setData(areas.nopark);
       if (areas?.ogarniam)   map.getSource('zones-ogarniam')?.setData(areas.ogarniam);
-    }catch(e){ console.warn('zones not available', e); }
+    }catch(e){ /* fine if not available */ }
 
-    // auto refresh
     clearTimeout(timer);
-    timer = setTimeout(()=> loadAll(false), 20000);
+    timer = setTimeout(()=> loadAll(false, {fit:false}), 20000);
   }
 
 })();
