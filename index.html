@@ -12,18 +12,17 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap">
 
 <style>
-  :root{ --panel:#17171c; --panel2:#1f1f26; --text:#f5f6fa; --muted:#a7a7b4; --accent:#7b4bff; --accent2:#a07bff; --radius:12px; --shadow:0 10px 30px rgba(0,0,0,.35); }
+  :root{
+    --panel:#17171c; --panel2:#1f1f26; --text:#f5f6fa; --muted:#a7a7b4;
+    --accent:#7b4bff; --accent2:#a07bff; --radius:12px; --shadow:0 10px 30px rgba(0,0,0,.35);
+    --ink:#1a1b1e; --ink2:#6b7280; --card:#ffffff; --divider:#e5e7eb;
+  }
   *{box-sizing:border-box}
   body{margin:0;background:#0c0c10;color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
   #map{position:fixed;inset:0}
 
-  .topbar{
-    position:fixed; left:12px; right:12px; top:12px; z-index:10;
-    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
-    background:rgba(23,23,28,.82); backdrop-filter:saturate(1.2) blur(8px);
-    border:1px solid rgba(255,255,255,.06); border-radius:var(--radius);
-    padding:8px 10px; box-shadow:var(--shadow)
-  }
+  /* top bar */
+  .topbar{position:fixed;left:12px;right:12px;top:12px;z-index:10;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:rgba(23,23,28,.82);backdrop-filter:saturate(1.2) blur(8px);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);padding:8px 10px;box-shadow:var(--shadow)}
   .brand{font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));padding:8px 12px;border-radius:10px}
   select,button{background:var(--panel2);color:var(--text);border:1px solid rgba(255,255,255,.08);padding:9px 12px;border-radius:10px;font-weight:600;cursor:pointer}
   select:hover,button:hover{border-color:rgba(255,255,255,.18)}
@@ -31,23 +30,32 @@
   .count{background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
 
   /* filter panel */
-  .panel{
-    position:fixed; right:12px; top:64px; z-index:11;
-    background:rgba(23,23,28,.92); backdrop-filter: blur(8px);
-    border:1px solid rgba(255,255,255,.08); border-radius:12px;
-    padding:12px; width:240px; box-shadow:var(--shadow);
+  .panel{position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;width:240px;box-shadow:var(--shadow)}
+  .panel h4{margin:8px 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .row{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:14px}
+  .panel input[type="checkbox"]{width:18px;height:18px;cursor:pointer;accent-color:#7b4bff}
+  .panel .small{display:flex;gap:12px;margin:4px 0 2px}
+  .panel .small a{font-size:12px;color:#bfc0ca;text-decoration:underline;cursor:pointer}
+
+  /* popup – white card like fioletowe */
+  .maplibregl-popup{max-width:360px !important}
+  .maplibregl-popup-content{
+    padding:12px;border-radius:14px;background:var(--card);color:var(--ink);
+    box-shadow:0 18px 50px rgba(0,0,0,.45);border:1px solid #eceff3;
   }
-  .panel h4{margin:8px 0 6px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
-  .row{display:flex; align-items:center; gap:10px; margin:6px 0; font-size:14px}
-  .panel input[type="checkbox"]{width:18px; height:18px; cursor:pointer; accent-color:#7b4bff}
-  .panel .small{display:flex; gap:12px; margin:4px 0 2px}
-  .panel .small a{font-size:12px; color:#bfc0ca; text-decoration:underline; cursor:pointer}
+  .maplibregl-popup-close-button{color:#444}
+  /* correct arrow color for all anchors */
+  .maplibregl-popup-anchor-top .maplibregl-popup-tip{border-bottom-color:var(--card)}
+  .maplibregl-popup-anchor-bottom .maplibregl-popup-tip{border-top-color:var(--card)}
+  .maplibregl-popup-anchor-left .maplibregl-popup-tip{border-right-color:var(--card)}
+  .maplibregl-popup-anchor-right .maplibregl-popup-tip{border-left-color:var(--card)}
 
   .badge{background:#7b4bff;color:#fff;padding:4px 10px;border-radius:10px;font-weight:800;display:inline-block;min-width:52px;text-align:center}
-  .muted{color:var(--muted)}
+  .muted{color:var(--ink2)}
   .infocard{min-width:300px;max-width:340px}
-  .carimg{width:100%; height:120px; object-fit:cover; border-radius:9px; background:#1d1d22; margin-bottom:8px; display:block}
-  .title{font-weight:800; font-size:16px}
+  .carimg{width:100%;height:auto;max-height:150px;object-fit:contain;border-radius:10px;background:transparent;margin-bottom:8px;display:block}
+  .title{font-weight:800;font-size:16px;color:var(--ink)}
+  .divider{height:1px;background:var(--divider);margin:6px 0 8px}
 </style>
 </head>
 <body>
@@ -92,13 +100,12 @@
 
 <script>
 (function(){
-  // 1) Put your MapTiler key here (IN QUOTES)
-  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC';
+  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // put your key IN QUOTES
 
   const API_CARS  = '/.netlify/functions/traficar-auto';
   const API_AREAS = '/.netlify/functions/traficar-areas';
 
-  // --- small helpers/state ---
+  /* ---------- helpers/state ---------- */
   const centers = {
     krakow:{lng:19.9383,lat:50.0614,z:13}, warszawa:{lng:21.0122,lat:52.2297,z:12},
     wroclaw:{lng:17.0385,lat:51.1079,z:13}, poznan:{lng:16.9252,lat:52.4064,z:13},
@@ -112,27 +119,24 @@
   const citySel = document.getElementById('city');
   const refreshBtn = document.getElementById('refresh');
   const countEl = document.getElementById('count');
+  const allBtn = document.getElementById('all');
+  const noneBtn= document.getElementById('none');
   const relCB = document.getElementById('toggle-rel');
   const nopCB = document.getElementById('toggle-nop');
   const ogCB  = document.getElementById('toggle-og');
-  const allBtn = document.getElementById('all');
-  const noneBtn= document.getElementById('none');
 
   citySel.value = initialCity;
   let currentCity = citySel.value;
 
-  // Per-city selection set: Set(modelName). Empty set = show NONE.
-  const modelSelections = new Map();
-  const modelOptions    = new Map();
-  let lastUIChange = 0;
-  function noteUI(){ lastUIChange = Date.now(); }
+  const modelSelections = new Map(); // city -> Set(model)
+  const modelOptions    = new Map(); // city -> {car:[],van:[],scooter:[]}
+  let lastUIChange = 0; const noteUI = ()=>{ lastUIChange = Date.now(); };
 
-  // --- model image lookup (uses your -traficar filenames) ---
   function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
   const SILHOUETTES = {
-    car: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><path d="M70 210h500a20 20 0 0 0 20-20v-25c0-10-5-20-14-26l-55-35c-8-5-17-8-27-8H227l-45-40c-8-7-19-11-30-11H95c-12 0-22 7-26 18l-20 54c-3 8-10 13-18 13H20v60h30a35 35 0 0 0 70 0h330a35 35 0 0 0 70 0h30v-10H70v10z"/></g></svg>',
-    van: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><path d="M60 210h520c11 0 20-9 20-20v-60c0-6-3-12-8-16l-80-60c-4-3-9-4-14-4H180c-17 0-30 13-30 30v20H60v110z"/></g></svg>',
-    scooter: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><circle cx="150" cy="210" r="35"/><circle cx="480" cy="210" r="35"/><path d="M190 210h220l-40-110h-40l32 88H200zM360 100h40l-10-40h-40z"/></g></svg>'
+    car: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%23ffffff"/><g fill="%23999"><path d="M70 210h500a20 20 0 0 0 20-20v-25c0-10-5-20-14-26l-55-35c-8-5-17-8-27-8H227l-45-40c-8-7-19-11-30-11H95c-12 0-22 7-26 18l-20 54c-3 8-10 13-18 13H20v60h30a35 35 0 0 0 70 0h330a35 35 0 0 0 70 0h30v-10H70v10z"/></g></svg>',
+    van: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%23ffffff"/><g fill="%23999"><path d="M60 210h520c11 0 20-9 20-20v-60c0-6-3-12-8-16l-80-60c-4-3-9-4-14-4H180c-17 0-30 13-30 30v20H60v110z"/></g></svg>',
+    scooter: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%23ffffff"/><g fill="%23999"><circle cx="150" cy="210" r="35"/><circle cx="480" cy="210" r="35"/><path d="M190 210h220l-40-110h-40l32 88H200zM360 100h40l-10-40h-40z"/></g></svg>'
   };
   const CUSTOM_FILE_BY_MODEL = {
     'renault-arkana':  'renault-arkana-traficar',
@@ -149,7 +153,7 @@
     return { webp: `${base}.webp`, jpg: `${base}.jpg`, fallback: SILHOUETTES[kind||'car'] };
   }
 
-  // --- Map ---
+  /* ---------- map ---------- */
   const map = new maplibregl.Map({
     container:'map',
     style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
@@ -160,295 +164,152 @@
   map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
   map.on('load', async () => {
-    // Cars source with cluster counters
     map.addSource('cars', {
-      type:'geojson',
-      data: emptyFC(),
-      cluster:true, clusterRadius: 64, clusterMaxZoom: 14,
-      clusterProperties: {
-        car:     ["+", ["case", ["==", ["get","kind"], "car"], 1, 0]],
-        van:     ["+", ["case", ["==", ["get","kind"], "van"], 1, 0]],
-        scooter: ["+", ["case", ["==", ["get","kind"], "scooter"], 1, 0]]
+      type:'geojson', data: emptyFC(),
+      cluster:true, clusterRadius:64, clusterMaxZoom:14,
+      clusterProperties:{
+        car:["+",["case",["==",["get","kind"],"car"],1,0]],
+        van:["+",["case",["==",["get","kind"],"van"],1,0]],
+        scooter:["+",["case",["==",["get","kind"],"scooter"],1,0]]
       }
     });
 
-    // Pie icon generation (ImageData) + background circle
     const PIE_CACHE = new Set();
-    map.on('styleimagemissing', (e) => {
-      const m = /^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id);
-      if (!m || PIE_CACHE.has(e.id)) return;
-      try { map.addImage(e.id, pieImageData(+m[1],+m[2],+m[3]), { pixelRatio:2 }); PIE_CACHE.add(e.id); map.triggerRepaint(); } catch {}
+    map.on('styleimagemissing', (e)=>{
+      const m=/^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id); if(!m||PIE_CACHE.has(e.id))return;
+      try{ map.addImage(e.id, pieImageData(+m[1],+m[2],+m[3]), { pixelRatio:2 }); PIE_CACHE.add(e.id); map.triggerRepaint(); }catch{}
     });
-    map.on('idle', () => {
-      const feats = map.queryRenderedFeatures({ layers:['clusters-pie'] });
-      for (const f of feats) {
-        const id = `pie_${f.properties.car|0}_${f.properties.van|0}_${f.properties.scooter|0}`;
-        if (!map.hasImage(id)) { try { map.addImage(id, pieImageData(f.properties.car|0, f.properties.van|0, f.properties.scooter|0), { pixelRatio:2 }); } catch {} }
-      }
-    });
-    map.addLayer({
-      id:'clusters-bg', type:'circle', source:'cars', filter:['has','point_count'],
-      paint:{ 'circle-color':'#3e3e45','circle-stroke-color':'#111','circle-stroke-width':2,
-              'circle-radius':['interpolate',['linear'],['get','point_count'],2,14,50,18,200,24,500,28] }
-    });
-    map.addLayer({
-      id:'clusters-pie', type:'symbol', source:'cars', filter:['has','point_count'],
-      layout:{
-        'icon-image': ['concat','pie_', ['to-string',['coalesce',['get','car'],0]], '_', ['to-string',['coalesce',['get','van'],0]], '_', ['to-string',['coalesce',['get','scooter'],0]]],
-        'icon-size': ['interpolate',['linear'],['get','point_count'],2,0.85,50,1.0,200,1.25,500,1.5],
-        'icon-allow-overlap': true,
-        'text-field': ['get','point_count_abbreviated'],
-        'text-size': 12,
-        'text-font': ['Open Sans Semibold','Arial Unicode MS Bold'],
-        'text-offset': [0, 0],
-        'text-allow-overlap': true
-      },
-      paint:{ 'text-color':'#ffffff', 'text-halo-color':'#111', 'text-halo-width':1.2 }
-    });
-
-    // Unclustered points
-    map.addLayer({
-      id:'unclustered', type:'circle', source:'cars', filter:['!',['has','point_count']],
-      paint:{
-        'circle-color':[ 'case', ['!', ['has','pct']], '#8e8e93', ['>=', ['get','pct'], 50], '#3ddc84', ['>=', ['get','pct'], 20], '#ffb020', '#ff6b6b' ],
-        'circle-stroke-color':'#111','circle-stroke-width':2,'circle-radius':8
+    map.on('idle', ()=>{
+      const feats=map.queryRenderedFeatures({layers:['clusters-pie']});
+      for(const f of feats){
+        const id=`pie_${f.properties.car|0}_${f.properties.van|0}_${f.properties.scooter|0}`;
+        if(!map.hasImage(id)){ try{ map.addImage(id, pieImageData(f.properties.car|0,f.properties.van|0,f.properties.scooter|0), { pixelRatio:2 }); }catch{} }
       }
     });
 
-    // Overlays
-    map.addSource('zones-relocation', { type:'geojson', data: emptyFC() });
-    map.addSource('zones-nopark',     { type:'geojson', data: emptyFC() });
-    map.addSource('zones-ogarniam',   { type:'geojson', data: emptyFC() });
-    map.addLayer({ id:'relocation-fill', type:'fill', source:'zones-relocation', paint:{ 'fill-color':'#ffd500', 'fill-opacity':0.22 }});
-    map.addLayer({ id:'relocation-outline', type:'line', source:'zones-relocation', paint:{ 'line-color':'#ffd500', 'line-width':2 }});
-    map.addLayer({ id:'nopark-fill', type:'fill', source:'zones-nopark', paint:{ 'fill-color':'#ff4d4d', 'fill-opacity':0.28 }});
-    map.addLayer({ id:'nopark-outline', type:'line', source:'zones-nopark', paint:{ 'line-color':'#ff4d4d', 'line-width':1.5, 'line-dasharray':[2,2] }});
-    map.addLayer({ id:'ogarniam-fill', type:'fill', source:'zones-ogarniam', paint:{ 'fill-color':'#a56cff', 'fill-opacity':0.16 }});
-    map.addLayer({ id:'ogarniam-outline', type:'line', source:'zones-ogarniam', paint:{ 'line-color':'#a56cff', 'line-width':2 }});
+    map.addLayer({ id:'clusters-bg', type:'circle', source:'cars', filter:['has','point_count'],
+      paint:{'circle-color':'#3e3e45','circle-stroke-color':'#111','circle-stroke-width':2,
+             'circle-radius':['interpolate',['linear'],['get','point_count'],2,14,50,18,200,24,500,28]}});
+    map.addLayer({ id:'clusters-pie', type:'symbol', source:'cars', filter:['has','point_count'],
+      layout:{'icon-image':['concat','pie_',['to-string',['coalesce',['get','car'],0]],'_',['to-string',['coalesce',['get','van'],0]],'_',['to-string',['coalesce',['get','scooter'],0]]],
+              'icon-size':['interpolate',['linear'],['get','point_count'],2,.85,50,1.0,200,1.25,500,1.5],
+              'icon-allow-overlap':true,'text-field':['get','point_count_abbreviated'],'text-size':12,
+              'text-font':['Open Sans Semibold','Arial Unicode MS Bold'],'text-offset':[0,0],'text-allow-overlap':true},
+      paint:{'text-color':'#ffffff','text-halo-color':'#111','text-halo-width':1.2}});
 
-    // Popup with image on top
-    map.on('click','unclustered', (e)=>{
-      const v = e.features[0].properties;
-      const [lng,lat] = e.features[0].geometry.coordinates;
+    map.addLayer({ id:'unclustered', type:'circle', source:'cars', filter:['!',['has','point_count']],
+      paint:{'circle-color':['case',['!', ['has','pct']], '#8e8e93', ['>=', ['get','pct'], 50], '#3ddc84', ['>=', ['get','pct'], 20], '#ffb020', '#ff6b6b'],
+             'circle-stroke-color':'#111','circle-stroke-width':2,'circle-radius':8 }});
 
-      const badge = v.number ? v.number : (v.id ? String(v.id).slice(-4) : '');
-      const plate = v.plate || '';
-      const pct = (v.pct!=null) ? `${v.pct}%` : '—';
-      const range = (v.rangeKm!=null) ? ` (${v.rangeKm} km)` : '';
-      const addr = v.address || '';
-      const apple = `https://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(v.model || 'Car')}`;
+    // overlays
+    map.addSource('zones-relocation',{type:'geojson',data:emptyFC()});
+    map.addSource('zones-nopark',{type:'geojson',data:emptyFC()});
+    map.addSource('zones-ogarniam',{type:'geojson',data:emptyFC()});
+    map.addLayer({id:'relocation-fill',type:'fill',source:'zones-relocation',paint:{'fill-color':'#ffd500','fill-opacity':0.22}});
+    map.addLayer({id:'relocation-outline',type:'line',source:'zones-relocation',paint:{'line-color':'#ffd500','line-width':2}});
+    map.addLayer({id:'nopark-fill',type:'fill',source:'zones-nopark',paint:{'fill-color':'#ff4d4d','fill-opacity':0.28}});
+    map.addLayer({id:'nopark-outline',type:'line',source:'zones-nopark',paint:{'line-color':'#ff4d4d','line-width':1.5,'line-dasharray':[2,2]}});
+    map.addLayer({id:'ogarniam-fill',type:'fill',source:'zones-ogarniam',paint:{'fill-color':'#a56cff','fill-opacity':0.16}});
+    map.addLayer({id:'ogarniam-outline',type:'line',source:'zones-ogarniam',paint:{'line-color':'#a56cff','line-width':2}});
 
-      const img = modelImage(v.model, v.kind);
-      const html = `
+    // popup
+    map.on('click','unclustered',(e)=>{
+      const v=e.features[0].properties; const [lng,lat]=e.features[0].geometry.coordinates;
+      const badge=v.number?v.number:(v.id?String(v.id).slice(-4):''); const plate=v.plate||'';
+      const pct=(v.pct!=null)?`${v.pct}%`:'—'; const range=(v.rangeKm!=null)?` (${v.rangeKm} km)`:'';
+      const addr=v.address||''; const apple=`https://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(v.model||'Car')}`;
+      const img=modelImage(v.model,v.kind);
+      const html=`
         <div class="infocard">
           <picture>
             <source type="image/webp" srcset="${img.webp}">
-            <img class="carimg" src="${img.jpg}" onerror="this.src='${img.fallback}'" alt="${v.model||'Vehicle'}">
+            <img class="carimg" src="${img.jpg}" onerror="this.src='${img.fallback}'" alt="${(v.model||'Vehicle').replace(/"/g,'&quot;')}">
           </picture>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
             <span class="badge">${badge}</span>
-            <div class="title">${v.model || 'Vehicle'}</div>
+            <div class="title">${v.model||'Vehicle'}</div>
           </div>
-          <div class="muted" style="margin:-2px 0 8px">${plate || '&nbsp;'}</div>
+          <div class="muted" style="margin:-2px 0 8px">${plate||'&nbsp;'}</div>
           <div class="muted" style="margin:6px 0">⛽ <b>${pct}${range}</b></div>
           <div class="muted" style="margin:6px 0">📍 ${addr}</div>
+          <div class="divider"></div>
           <div style="margin:8px 0"><a href="${apple}" target="_blank" rel="noopener">Open in Apple Maps</a></div>
-        </div>
-      `;
-      new maplibregl.Popup({ closeButton:true, offset:12 }).setLngLat([lng,lat]).setHTML(html).addTo(map);
+        </div>`;
+      new maplibregl.Popup({closeButton:true,offset:12}).setLngLat([lng,lat]).setHTML(html).addTo(map);
     });
 
-    await loadAll(true, { fit:true });
+    await loadAll(true,{fit:true});
   });
 
-  // Draw cluster pies as ImageData (robust)
   function pieImageData(c,v,s){
-    const size = 64*2; const r = size/2;
-    const cvs = document.createElement('canvas'); cvs.width=size; cvs.height=size;
-    const g = cvs.getContext('2d');
-    g.beginPath(); g.arc(r,r,r-4,0,Math.PI*2); g.fillStyle='#3e3e45'; g.fill();
-    const total = Math.max(1, c+v+s);
-    let start = -Math.PI/2;
-    const slice = (val,color)=>{
-      const ang = (val/total)*Math.PI*2;
-      g.beginPath(); g.moveTo(r,r); g.arc(r,r,r-8,start,start+ang,false); g.closePath();
-      g.fillStyle=color; g.fill(); start+=ang;
-    };
-    slice(c,'#7b4bff'); // cars
-    slice(v,'#1d4ed8'); // vans
-    slice(s,'#2dd4bf'); // scooters
-    g.beginPath(); g.arc(r,r,r-28,0,Math.PI*2); g.fillStyle='#121218'; g.fill();
-    g.beginPath(); g.arc(r,r,r-3,0,Math.PI*2); g.strokeStyle='#111'; g.lineWidth=4; g.stroke();
+    const size=64*2,r=size/2,cvs=document.createElement('canvas');cvs.width=size;cvs.height=size;const g=cvs.getContext('2d');
+    g.beginPath();g.arc(r,r,r-4,0,Math.PI*2);g.fillStyle='#3e3e45';g.fill();
+    const T=Math.max(1,c+v+s);let a=-Math.PI/2;
+    const slice=(n,col)=>{const ang=(n/T)*Math.PI*2;g.beginPath();g.moveTo(r,r);g.arc(r,r,r-8,a,a+ang,false);g.closePath();g.fillStyle=col;g.fill();a+=ang;};
+    slice(c,'#7b4bff'); slice(v,'#1d4ed8'); slice(s,'#2dd4bf');
+    g.beginPath();g.arc(r,r,r-28,0,Math.PI*2);g.fillStyle='#121218';g.fill();
+    g.beginPath();g.arc(r,r,r-3,0,Math.PI*2);g.strokeStyle='#111';g.lineWidth=4;g.stroke();
     return g.getImageData(0,0,size,size);
   }
 
-  // --- state/helpers ---
-  let timer = null;
-  window.__CITY_CACHE = { cars: [] };
+  /* ---------- data/filter plumbing (unchanged except for UI jitter guard) ---------- */
+  let timer=null; window.__CITY_CACHE={cars:[]};
+  const setCount=n=>{countEl.textContent=`${n} ${n===1?'car':'cars'}`};
+  const emptyFC=()=>({type:'FeatureCollection',features:[]});
+  const toGeo=data=>({type:'FeatureCollection',features:data.map(v=>({type:'Feature',geometry:{type:'Point',coordinates:[Number(v.lng),Number(v.lat)]},properties:{id:v.id??null,model:v.model??'Vehicle',plate:v.plate??'',number:v.number??'',pct:(typeof v.pct==='number')?v.pct:null,rangeKm:(typeof v.rangeKm==='number')?v.rangeKm:null,address:v.address||'',kind:v.kind||'car'}}))});
 
-  function emptyFC(){ return { type:'FeatureCollection', features: [] }; }
-  function setCount(n){ countEl.textContent = `${n} ${n===1?'car':'cars'}`; }
-
-  function toGeo(data){
-    return {
-      type:'FeatureCollection',
-      features: data.map(v => ({
-        type:'Feature',
-        geometry:{ type:'Point', coordinates:[Number(v.lng), Number(v.lat)] },
-        properties:{
-          id: v.id ?? null, model: v.model ?? 'Vehicle',
-          plate: v.plate ?? '', number: v.number ?? '',
-          pct: (typeof v.pct === 'number') ? v.pct : null,
-          rangeKm: (typeof v.rangeKm === 'number') ? v.rangeKm : null,
-          address: v.address || '',
-          kind: v.kind || 'car'
-        }
-      }))
-    };
-  }
-
-  // Apply current selection; empty set => NONE; don’t recenter unless asked
   function applyFilterAndRender({fit=false}={}){
-    const cars = window.__CITY_CACHE.cars || [];
-    const sel  = modelSelections.get(currentCity) || new Set(); // empty shows none
-    const filtered = sel.size ? cars.filter(v => sel.has(v.model)) : [];
-    map.getSource('cars')?.setData(toGeo(filtered));
-    setCount(filtered.length);
-    if (fit && filtered.length){
-      const b = new maplibregl.LngLatBounds();
-      filtered.forEach(v => b.extend([Number(v.lng), Number(v.lat)]));
-      try { map.fitBounds(b, { padding: 60, maxZoom: 15 }); } catch {}
-    }
+    const cars=window.__CITY_CACHE.cars||[]; const sel=modelSelections.get(currentCity)||new Set();
+    const filtered=sel.size?cars.filter(v=>sel.has(v.model)):[];
+    map.getSource('cars')?.setData(toGeo(filtered)); setCount(filtered.length);
+    if(fit&&filtered.length){const b=new maplibregl.LngLatBounds(); filtered.forEach(v=>b.extend([Number(v.lng),Number(v.lat)])); try{map.fitBounds(b,{padding:60,maxZoom:15})}catch{}}
   }
 
-  // Build/rebuild model checkboxes only when models actually change
-  function sameList(a=[],b=[]){ return a.slice().sort().join('|')===b.slice().sort().join('|'); }
+  function sameList(a=[],b=[]){return a.slice().sort().join('|')===b.slice().sort().join('|')}
   function buildModelPanelIfNeeded(grouped){
-    const prev = modelOptions.get(currentCity);
-    const need = !prev || !sameList(prev.car, grouped.car) || !sameList(prev.van, grouped.van) || !sameList(prev.scooter, grouped.scooter);
-    if (!need) return;
-
-    modelOptions.set(currentCity, grouped);
-
-    // init selection for this city ONCE to “all checked”
-    if (!modelSelections.has(currentCity)) {
-      modelSelections.set(currentCity, new Set([...(grouped.car||[]), ...(grouped.van||[]), ...(grouped.scooter||[])]));
-    } else {
-      // keep user choices; add any new models (checked), drop removed ones
-      const set = modelSelections.get(currentCity);
-      const all = [...(grouped.car||[]), ...(grouped.van||[]), ...(grouped.scooter||[])];
-      for (const n of all) set.add(n);
-      for (const n of Array.from(set)) if (!all.includes(n)) set.delete(n);
-    }
-
-    const carsDiv = document.getElementById('models-cars');
-    const vansDiv = document.getElementById('models-vans');
-    const scootDiv= document.getElementById('models-scooters');
-
-    function fill(el, arr){
-      el.innerHTML = '';
-      (arr||[]).sort((a,b)=>a.localeCompare(b,'pl')).forEach(name=>{
-        const id = `${currentCity}-mdl-${name.replace(/\W+/g,'-')}`;
-        const row = document.createElement('div');
-        row.className = 'row';
-        row.innerHTML = `<input type="checkbox" id="${id}"><label for="${id}">${name}</label>`;
-        const cb = row.querySelector('input');
-        cb.checked = modelSelections.get(currentCity).has(name);
-        cb.addEventListener('change', ()=>{
-          const set = modelSelections.get(currentCity);
-          if (cb.checked) set.add(name); else set.delete(name);
-          noteUI();
-          applyFilterAndRender({fit:false});
-        });
-        el.appendChild(row);
-      });
-    }
-    fill(carsDiv, grouped.car);
-    fill(vansDiv, grouped.van);
-    fill(scootDiv, grouped.scooter);
+    const prev=modelOptions.get(currentCity); const need=!prev||!sameList(prev.car,grouped.car)||!sameList(prev.van,grouped.van)||!sameList(prev.scooter,grouped.scooter);
+    if(!need) return;
+    modelOptions.set(currentCity,grouped);
+    if(!modelSelections.has(currentCity)){ modelSelections.set(currentCity,new Set([...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])])); }
+    else{ const set=modelSelections.get(currentCity); const all=[...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])]; for(const n of all)set.add(n); for(const n of Array.from(set)) if(!all.includes(n)) set.delete(n); }
+    const carsDiv=document.getElementById('models-cars'),vansDiv=document.getElementById('models-vans'),scootDiv=document.getElementById('models-scooters');
+    function fill(el,arr){ el.innerHTML=''; (arr||[]).sort((a,b)=>a.localeCompare(b,'pl')).forEach(name=>{ const id=`${currentCity}-mdl-${name.replace(/\W+/g,'-')}`; const row=document.createElement('div'); row.className='row'; row.innerHTML=`<input type="checkbox" id="${id}"><label for="${id}">${name}</label>`; const cb=row.querySelector('input'); cb.checked=modelSelections.get(currentCity).has(name); cb.addEventListener('change',()=>{const set=modelSelections.get(currentCity); if(cb.checked)set.add(name); else set.delete(name); noteUI(); applyFilterAndRender({fit:false});}); el.appendChild(row); }); }
+    fill(carsDiv,grouped.car); fill(vansDiv,grouped.van); fill(scootDiv,grouped.scooter);
   }
 
-  // Select all / none links
-  allBtn.addEventListener('click', ()=>{
-    const opts = modelOptions.get(currentCity) || {car:[],van:[],scooter:[]};
-    modelSelections.set(currentCity, new Set([...(opts.car||[]), ...(opts.van||[]), ...(opts.scooter||[])]));
-    document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb => cb.checked = true);
-    noteUI();
-    applyFilterAndRender({fit:false});
-  });
-  noneBtn.addEventListener('click', ()=>{
-    modelSelections.set(currentCity, new Set());
-    document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb => cb.checked = false);
-    noteUI();
-    applyFilterAndRender({fit:false});
-  });
+  allBtn.addEventListener('click',()=>{ const opts=modelOptions.get(currentCity)||{car:[],van:[],scooter:[]}; modelSelections.set(currentCity,new Set([...(opts.car||[]),...(opts.van||[]),...(opts.scooter||[])])); document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb=>cb.checked=true); noteUI(); applyFilterAndRender({fit:false});});
+  noneBtn.addEventListener('click',()=>{ modelSelections.set(currentCity,new Set()); document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb=>cb.checked=false); noteUI(); applyFilterAndRender({fit:false});});
 
-  // City change / refresh
-  citySel.addEventListener('change', ()=>{
-    currentCity = citySel.value;
-    const cfg = centers[currentCity] || centers.krakow;
-    const p = new URLSearchParams(location.search); p.set('city', currentCity); history.replaceState(null,'',`?${p.toString()}`);
-    clearTimeout(timer);
-    map.getSource('cars')?.setData(emptyFC());
-    setCount(0);
-    map.easeTo({ center: cfg, zoom: cfg.z });
-    loadAll(true, { fit:true });
-  });
-  refreshBtn.addEventListener('click', ()=> loadAll(false, { fit:false }));
+  citySel.addEventListener('change',()=>{ currentCity=citySel.value; const cfg=centers[currentCity]||centers.krakow; const p=new URLSearchParams(location.search); p.set('city',currentCity); history.replaceState(null,'',`?${p.toString()}`); clearTimeout(timer); map.getSource('cars')?.setData(emptyFC()); setCount(0); map.easeTo({center:cfg,zoom:cfg.z}); loadAll(true,{fit:true});});
+  refreshBtn.addEventListener('click',()=>loadAll(false,{fit:false}));
 
-  // overlay toggles
-  relCB.addEventListener('change', (e)=> toggleLayer('relocation', e.target.checked));
-  nopCB.addEventListener('change', (e)=> toggleLayer('nopark', e.target.checked));
-  ogCB .addEventListener('change', (e)=> toggleLayer('ogarniam', e.target.checked));
-  function toggleLayer(key,on){
-    const v = on ? 'visible' : 'none';
-    map.setLayoutProperty(`${key}-fill`,'visibility',v);
-    map.setLayoutProperty(`${key}-outline`,'visibility',v);
-  }
+  relCB.addEventListener('change',e=>toggleLayer('relocation',e.target.checked));
+  nopCB.addEventListener('change',e=>toggleLayer('nopark',e.target.checked));
+  ogCB .addEventListener('change',e=>toggleLayer('ogarniam',e.target.checked));
+  function toggleLayer(k,on){const v=on?'visible':'none'; map.setLayoutProperty(`${k}-fill`,'visibility',v); map.setLayoutProperty(`${k}-outline`,'visibility',v);}
 
-  // Load cars + zones; don’t clobber UI if user just clicked
-  async function loadAll(first=false, {fit=false}={}){
+  async function loadAll(first=false,{fit=false}={}){
     try{
-      const qs = new URLSearchParams({ city: currentCity });
-      const cached = localStorage.getItem(`traficar_zones_${currentCity}`);
-      if (cached && !first){
-        try{ const z = JSON.parse(cached); if (Array.isArray(z.zones) && (Date.now()-z.ts<10*60*1000)) qs.set('zones', z.zones.join(',')); }catch{}
-      }
-      const res = await fetch(`${API_CARS}?${qs.toString()}`);
-      const data = await res.json();
-
-      let cars, zones;
-      if (Array.isArray(data)) { cars = data; }
-      else { cars = data.cars || []; zones = data.zones || []; }
-
-      if (Array.isArray(zones) && zones.length){
-        localStorage.setItem(`traficar_zones_${currentCity}`, JSON.stringify({ zones, ts: Date.now() }));
-      }
-
-      const byKind = { car:new Set(), van:new Set(), scooter:new Set() };
-      for (const v of cars) if (v && v.model) (byKind[v.kind||'car']||byKind.car).add(v.model);
-      const grouped = { car:[...byKind.car], van:[...byKind.van], scooter:[...byKind.scooter] };
-
-      const tooSoon = Date.now() - lastUIChange < 1500; // don’t rebuild right after a click
-      if (!tooSoon) buildModelPanelIfNeeded(grouped);
-
-      window.__CITY_CACHE.cars = cars;
-      applyFilterAndRender({fit});
-    }catch(e){ console.error(e); }
-
+      const qs=new URLSearchParams({city:currentCity}); const cached=localStorage.getItem(`traficar_zones_${currentCity}`);
+      if(cached&&!first){ try{const z=JSON.parse(cached); if(Array.isArray(z.zones)&&(Date.now()-z.ts<10*60*1000)) qs.set('zones',z.zones.join(',')); }catch{} }
+      const res=await fetch(`${API_CARS}?${qs.toString()}`); const data=await res.json();
+      let cars,zones; if(Array.isArray(data)){cars=data;} else{cars=data.cars||[]; zones=data.zones||[];}
+      if(Array.isArray(zones)&&zones.length){ localStorage.setItem(`traficar_zones_${currentCity}`,JSON.stringify({zones,ts:Date.now()})); }
+      const byKind={car:new Set(),van:new Set(),scooter:new Set()}; for(const v of cars) if(v&&v.model) (byKind[v.kind||'car']||byKind.car).add(v.model);
+      const grouped={car:[...byKind.car],van:[...byKind.van],scooter:[...byKind.scooter]};
+      const tooSoon=Date.now()-lastUIChange<1500; if(!tooSoon) buildModelPanelIfNeeded(grouped);
+      window.__CITY_CACHE.cars=cars; applyFilterAndRender({fit});
+    }catch(e){console.error(e);}
     try{
-      const res = await fetch(`${API_AREAS}?city=${encodeURIComponent(currentCity)}`);
-      const areas = await res.json();
-      if (areas?.relocation) map.getSource('zones-relocation')?.setData(areas.relocation);
-      if (areas?.nopark)     map.getSource('zones-nopark')?.setData(areas.nopark);
-      if (areas?.ogarniam)   map.getSource('zones-ogarniam')?.setData(areas.ogarniam);
+      const res=await fetch(`${API_AREAS}?city=${encodeURIComponent(currentCity)}`); const areas=await res.json();
+      if(areas?.relocation) map.getSource('zones-relocation')?.setData(areas.relocation);
+      if(areas?.nopark)     map.getSource('zones-nopark')?.setData(areas.nopark);
+      if(areas?.ogarniam)   map.getSource('zones-ogarniam')?.setData(areas.ogarniam);
     }catch(e){}
-
-    clearTimeout(timer);
-    timer = setTimeout(()=> loadAll(false, {fit:false}), 20000);
+    clearTimeout(timer); timer=setTimeout(()=>loadAll(false,{fit:false}),20000);
   }
 
-  function emptyFC(){ return { type:'FeatureCollection', features: [] }; }
+  const emptyFC=()=>({type:'FeatureCollection',features:[]});
 })();
 </script>
 </body>
