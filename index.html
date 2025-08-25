@@ -1,307 +1,439 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>TrafiCar — Live Cars</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>TrafiCar — Live Cars</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css"/>
-  <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css"/>
+<script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap">
 
-  <style>
-    :root{ --panel2:#1f1f26; --text:#f5f6fa; --muted:#a7a7b4; --accent:#7b4bff; --accent2:#a07bff; --radius:14px; --shadow:0 10px 30px rgba(0,0,0,.35); }
-    *{box-sizing:border-box}
-    body{margin:0;background:linear-gradient(180deg,#0b0b0e,#141419);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
-    #map{position:fixed;inset:0}
-    .topbar{
-      position:fixed;inset:12px 12px auto 12px;z-index:10;display:flex;gap:10px;align-items:center;flex-wrap:wrap;
-      background:rgba(23,23,28,.82);backdrop-filter:saturate(1.2) blur(8px);border:1px solid rgba(255,255,255,.06);
-      border-radius:14px;padding:8px 10px;box-shadow:var(--shadow)
-    }
-    .brand{font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));padding:8px 12px;border-radius:12px}
-    select,button{background:var(--panel2);color:var(--text);border:1px solid rgba(255,255,255,.08);padding:9px 12px;border-radius:12px;font-weight:600;cursor:pointer}
-    select:hover,button:hover{border-color:rgba(255,255,255,.18)}
-    .spacer{flex:1}
-    .count{background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
-    .badge{background:#7b4bff;color:#fff;padding:4px 8px;border-radius:10px;font-weight:800;display:inline-block;min-width:46px;text-align:center}
-    .muted{color:var(--muted)}
-    .infocard{min-width:280px;max-width:320px}
-  </style>
+<style>
+  :root{ --panel:#17171c; --panel2:#1f1f26; --text:#f5f6fa; --muted:#a7a7b4; --accent:#7b4bff; --accent2:#a07bff; --radius:12px; --shadow:0 10px 30px rgba(0,0,0,.35); }
+  *{box-sizing:border-box}
+  body{margin:0;background:#0c0c10;color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
+  #map{position:fixed;inset:0}
+
+  .topbar{
+    position:fixed; left:12px; right:12px; top:12px; z-index:10;
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    background:rgba(23,23,28,.82); backdrop-filter:saturate(1.2) blur(8px);
+    border:1px solid rgba(255,255,255,.06); border-radius:var(--radius);
+    padding:8px 10px; box-shadow:var(--shadow)
+  }
+  .brand{font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));padding:8px 12px;border-radius:10px}
+  select,button{background:var(--panel2);color:var(--text);border:1px solid rgba(255,255,255,.08);padding:9px 12px;border-radius:10px;font-weight:600;cursor:pointer}
+  select:hover,button:hover{border-color:rgba(255,255,255,.18)}
+  .spacer{flex:1}
+  .count{background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
+
+  /* right filter panel */
+  .panel{
+    position:fixed; right:12px; top:64px; z-index:11;
+    background:rgba(23,23,28,.92); backdrop-filter: blur(8px);
+    border:1px solid rgba(255,255,255,.08); border-radius:12px;
+    padding:10px 12px; width:210px; box-shadow:var(--shadow);
+  }
+  .panel h4{margin:6px 0 8px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
+  .panel label{display:flex; align-items:center; gap:8px; margin:6px 0; font-size:14px}
+  .panel input[type="checkbox"]{width:16px; height:16px; cursor:pointer}
+  .chip{display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:#22222a; border:1px solid rgba(255,255,255,.06); color:#bfc0ca}
+
+  .badge{background:#7b4bff;color:#fff;padding:4px 8px;border-radius:10px;font-weight:800;display:inline-block;min-width:46px;text-align:center}
+  .muted{color:var(--muted)}
+  .infocard{min-width:280px;max-width:320px}
+</style>
 </head>
 <body>
-  <div id="map" aria-label="Traficar map"></div>
+<div id="map"></div>
 
-  <div class="topbar">
-    <div class="brand">🚗 TrafiCar</div>
-    <label>
-      <span class="muted" style="font-size:.85rem;margin-right:6px">City</span>
-      <select id="city">
-        <option value="krakow">Kraków</option>
-        <option value="warszawa">Warszawa</option>
-        <option value="wroclaw">Wrocław</option>
-        <option value="poznan">Poznań</option>
-        <option value="trojmiasto">Trójmiasto</option>
-        <option value="slask">Śląsk</option>
-        <option value="lublin">Lublin</option>
-        <option value="lodz">Łódź</option>
-        <option value="szczecin">Szczecin</option>
-        <option value="rzeszow">Rzeszów</option>
-      </select>
-    </label>
+<div class="topbar">
+  <div class="brand">🚗 TrafiCar</div>
+  <label><span class="muted" style="font-size:.85rem;margin-right:6px">City</span>
+    <select id="city">
+      <option value="krakow">Kraków</option>
+      <option value="warszawa">Warszawa</option>
+      <option value="wroclaw">Wrocław</option>
+      <option value="poznan">Poznań</option>
+      <option value="trojmiasto">Trójmiasto</option>
+      <option value="slask">Śląsk</option>
+      <option value="lublin">Lublin</option>
+      <option value="lodz">Łódź</option>
+      <option value="szczecin">Szczecin</option>
+      <option value="rzeszow">Rzeszów</option>
+    </select>
+  </label>
+  <button id="refresh">Refresh</button>
+  <div class="spacer"></div>
+  <div id="count" class="count">0 cars</div>
+</div>
 
-    <label>
-      <span class="muted" style="font-size:.85rem;margin:0 6px 0 12px">Model</span>
-      <select id="model"><option value="">All</option></select>
-    </label>
+<!-- Right filter panel -->
+<div class="panel" id="filters">
+  <h4>Osobowe</h4>
+  <div id="models-cars"></div>
+  <h4>Dostawcze</h4>
+  <div id="models-vans"></div>
+  <h4>Mikromobilność</h4>
+  <div id="models-scooters"></div>
+  <hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:8px 0">
+  <h4>Strefy</h4>
+  <label><input type="checkbox" id="toggle-rel" checked> Relokacja <span class="chip">żółta</span></label>
+  <label><input type="checkbox" id="toggle-nop" checked> Zakaz parkowania <span class="chip">czerwona</span></label>
+  <label><input type="checkbox" id="toggle-og" checked> Ogarniam <span class="chip">fiolet</span></label>
+</div>
 
-    <button id="refresh">Refresh</button>
-    <div class="spacer"></div>
-    <div id="count" class="count">0 cars</div>
-  </div>
+<script>
+(function(){
+  const MAPTILER_KEY = 'YOUR_MAPTILER_KEY';
+  const API_CARS = '/.netlify/functions/traficar-auto';
+  const API_AREAS = '/.netlify/functions/traficar-areas';
 
-  <script>
-  (function(){
-    const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // paste your MapTiler key
-    const API = '/.netlify/functions/traficar-auto';
+  const centers = {
+    krakow:{lng:19.9383,lat:50.0614,z:13}, warszawa:{lng:21.0122,lat:52.2297,z:12},
+    wroclaw:{lng:17.0385,lat:51.1079,z:13}, poznan:{lng:16.9252,lat:52.4064,z:13},
+    trojmiasto:{lng:18.6383,lat:54.3722,z:11}, slask:{lng:19.0238,lat:50.2649,z:11},
+    lublin:{lng:22.5684,lat:51.2465,z:13}, lodz:{lng:19.4550,lat:51.7592,z:12},
+    szczecin:{lng:14.5528,lat:53.4285,z:12}, rzeszow:{lng:21.9990,lat:50.0413,z:13}
+  };
 
-    const centers = {
-      krakow:{lng:19.9383,lat:50.0614,z:13}, warszawa:{lng:21.0122,lat:52.2297,z:12},
-      wroclaw:{lng:17.0385,lat:51.1079,z:13}, poznan:{lng:16.9252,lat:52.4064,z:13},
-      trojmiasto:{lng:18.6383,lat:54.3722,z:11}, slask:{lng:19.0238,lat:50.2649,z:11},
-      lublin:{lng:22.5684,lat:51.2465,z:13}, lodz:{lng:19.4550,lat:51.7592,z:12},
-      szczecin:{lng:14.5528,lat:53.4285,z:12}, rzeszow:{lng:21.9990,lat:50.0413,z:13}
-    };
+  const params = new URLSearchParams(location.search);
+  const initialCity = centers[params.get('city')] ? params.get('city') : 'krakow';
 
-    // URL ?city=
-    const params = new URLSearchParams(location.search);
-    const initialCity = centers[params.get('city')] ? params.get('city') : 'krakow';
+  const citySel = document.getElementById('city');
+  const refreshBtn = document.getElementById('refresh');
+  const countEl = document.getElementById('count');
+  const relCB = document.getElementById('toggle-rel');
+  const nopCB = document.getElementById('toggle-nop');
+  const ogCB  = document.getElementById('toggle-og');
 
-    const citySel = document.getElementById('city');
-    const modelSel = document.getElementById('model');
-    const countEl = document.getElementById('count');
-    const refreshBtn = document.getElementById('refresh');
-    citySel.value = initialCity;
+  citySel.value = initialCity;
+  let currentCity = citySel.value;
 
-    // request control
-    let map, sourceReady = false, timer = null;
-    let currentCity = citySel.value;
-    let latestReq = 0; // ignore stale responses
-    const emptyFC = { type:'FeatureCollection', features: [] };
+  // selected models (multi-select); by default, "all"
+  let selectedModels = new Set(); // empty = all
 
-    // per-city caches
-    const cityCache = new Map(); // city -> { cars, ts }
-    const ZKEY = c => `traficar_zones_${c}`;
-    function getCachedZones(c){
-      try{
-        const raw = localStorage.getItem(ZKEY(c));
-        if (!raw) return null;
-        const { zones, ts } = JSON.parse(raw);
-        if (!Array.isArray(zones)) return null;
-        if (Date.now()-ts > 10*60*1000) return null; // 10 min
-        return zones;
-      }catch{ return null; }
-    }
-    function setCachedZones(c, zones){
-      try{ localStorage.setItem(ZKEY(c), JSON.stringify({ zones, ts: Date.now() })); }catch{}
-    }
+  // map
+  const map = new maplibregl.Map({
+    container:'map',
+    style:`https://api.maptiler.com/maps/dataviz-dark/style.json?key=${om295piVB9WpF6hwX1iC}`,
+    center: centers[initialCity],
+    zoom: centers[initialCity].z,
+    attributionControl:true
+  });
+  map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
-    // MAP
-    map = new maplibregl.Map({
-      container: 'map',
-      style: `https://api.maptiler.com/maps/streets/style.json?key=${MAPTILER_KEY}`,
-      center: centers[initialCity],
-      zoom: centers[initialCity].z,
-      attributionControl: true
+  // sources & layers
+  map.on('load', async () => {
+    // cars source with clusterProperties (counts per kind)
+    map.addSource('cars', {
+      type:'geojson',
+      data: emptyFC(),
+      cluster:true, clusterRadius: 64, clusterMaxZoom: 14,
+      clusterProperties: {
+        car:     ["+", ["case", ["==", ["get","kind"], "car"], 1, 0]],
+        van:     ["+", ["case", ["==", ["get","kind"], "van"], 1, 0]],
+        scooter: ["+", ["case", ["==", ["get","kind"], "scooter"], 1, 0]]
+      }
     });
-    map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
-    map.on('load', () => {
-      map.addSource('cars', { type:'geojson', data: emptyFC, cluster:true, clusterRadius:60, clusterMaxZoom:14 });
-      map.addLayer({
-        id:'clusters', type:'circle', source:'cars', filter:['has','point_count'],
-        paint:{ 'circle-color':'#3e3e45','circle-stroke-color':'#111','circle-stroke-width':2,
-                'circle-radius':['step',['get','point_count'],16,20,20,50,26,100,32] }
-      });
-      map.addLayer({
-        id:'cluster-count', type:'symbol', source:'cars', filter:['has','point_count'],
-        layout:{ 'text-field':['get','point_count_abbreviated'],'text-font':['Open Sans Semibold','Arial Unicode MS Bold'],'text-size':12 },
-        paint:{ 'text-color':'#fff' }
-      });
-      map.addLayer({
-        id:'unclustered', type:'circle', source:'cars', filter:['!',['has','point_count']],
-        paint:{
-          'circle-color':[
-            'case',
-              ['!', ['has','pct']], '#8e8e93',
-              ['>=', ['get','pct'], 50], '#3ddc84',
-              ['>=', ['get','pct'], 20], '#ffb020',
-              '#ff6b6b'
-          ],
-          'circle-stroke-color':'#111',
-          'circle-stroke-width':2,
-          'circle-radius':8
-        }
-      });
+    // cluster pies (symbol with runtime images)
+    map.addLayer({
+      id:'clusters-pie', type:'symbol', source:'cars', filter:['has','point_count'],
+      layout:{
+        'icon-image': ['concat','pie_', ['to-string',['get','car']], '_', ['to-string',['get','van']], '_', ['to-string',['get','scooter']]],
+        'icon-size': 1,
+        'icon-allow-overlap': true,
+        'text-field': ['get','point_count_abbreviated'],
+        'text-size': 12,
+        'text-font': ['Open Sans Semibold','Arial Unicode MS Bold'],
+        'text-offset': [0, 0],
+        'text-allow-overlap': true
+      },
+      paint:{ 'text-color':'#ffffff', 'text-halo-color':'#111', 'text-halo-width':1.2 }
+    });
 
-      map.on('click','clusters', (e)=>{
-        const feat = map.queryRenderedFeatures(e.point, { layers:['clusters'] })[0];
-        map.getSource('cars').getClusterExpansionZoom(feat.properties.cluster_id, (err, zoom)=>{
-          if (err) return;
-          map.easeTo({ center: feat.geometry.coordinates, zoom });
-        });
-      });
+    // unclustered points
+    map.addLayer({
+      id:'unclustered', type:'circle', source:'cars', filter:['!',['has','point_count']],
+      paint:{
+        // color by fuel
+        'circle-color':[
+          'case',
+          ['!', ['has','pct']], '#8e8e93',
+          ['>=', ['get','pct'], 50], '#3ddc84',
+          ['>=', ['get','pct'], 20], '#ffb020',
+          '#ff6b6b'
+        ],
+        'circle-stroke-color':'#111',
+        'circle-stroke-width':2,
+        'circle-radius':8
+      }
+    });
 
-      map.on('click','unclustered', (e)=>{
-        const v = e.features[0].properties;
-        const coords = e.features[0].geometry.coordinates.slice();
-        const badge = v.number ? v.number : (v.id ? String(v.id).slice(-4) : '');
-        const plate = v.plate || '';
-        const pct = (v.pct!=null) ? `${v.pct}%` : '—';
-        const range = (v.rangeKm!=null) ? ` (${v.rangeKm} km)` : '';
-        const addr = v.address || '';
-        const apple = `https://maps.apple.com/?ll=${coords[1]},${coords[0]}&q=${encodeURIComponent(v.model || 'Car')}`;
-        const html = `
-          <div class="infocard">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-              <span class="badge">${badge}</span>
-              <div style="font-weight:800">${v.model || 'Vehicle'}</div>
-            </div>
-            <div class="muted" style="margin:-2px 0 8px">${plate || '&nbsp;'}</div>
-            <div class="muted" style="margin:6px 0">⛽ <b>${pct}${range}</b></div>
-            <div class="muted" style="margin:6px 0">📍 ${addr}</div>
-            <div style="margin:8px 0"><a href="${apple}" target="_blank" rel="noopener">Open in Apple Maps</a></div>
+    // overlays
+    map.addSource('zones-relocation', { type:'geojson', data: emptyFC() });
+    map.addSource('zones-nopark',     { type:'geojson', data: emptyFC() });
+    map.addSource('zones-ogarniam',   { type:'geojson', data: emptyFC() });
+
+    map.addLayer({
+      id:'relocation-fill', type:'fill', source:'zones-relocation',
+      paint:{ 'fill-color':'#ffd500', 'fill-opacity':0.22 }
+    });
+    map.addLayer({
+      id:'relocation-outline', type:'line', source:'zones-relocation',
+      paint:{ 'line-color':'#ffd500', 'line-width':2 }
+    });
+
+    map.addLayer({
+      id:'nopark-fill', type:'fill', source:'zones-nopark',
+      paint:{ 'fill-color':'#ff4d4d', 'fill-opacity':0.28 }
+    });
+    map.addLayer({
+      id:'nopark-outline', type:'line', source:'zones-nopark',
+      paint:{ 'line-color':'#ff4d4d', 'line-width':1.5, 'line-dasharray':[2,2] }
+    });
+
+    map.addLayer({
+      id:'ogarniam-fill', type:'fill', source:'zones-ogarniam',
+      paint:{ 'fill-color':'#a56cff', 'fill-opacity':0.16 }
+    });
+    map.addLayer({
+      id:'ogarniam-outline', type:'line', source:'zones-ogarniam',
+      paint:{ 'line-color':'#a56cff', 'line-width':2 }
+    });
+
+    // interactivity
+    map.on('click','unclustered', (e)=>{
+      const v = e.features[0].properties;
+      const [lng,lat] = e.features[0].geometry.coordinates;
+      const badge = v.number ? v.number : (v.id ? String(v.id).slice(-4) : '');
+      const plate = v.plate || '';
+      const pct = (v.pct!=null) ? `${v.pct}%` : '—';
+      const range = (v.rangeKm!=null) ? ` (${v.rangeKm} km)` : '';
+      const addr = v.address || '';
+      const apple = `https://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(v.model || 'Car')}`;
+      const html = `
+        <div class="infocard">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <span class="badge">${badge}</span>
+            <div style="font-weight:800">${v.model || 'Vehicle'}</div>
           </div>
-        `;
-        new maplibregl.Popup({ closeButton:true, offset:12 }).setLngLat(coords).setHTML(html).addTo(map);
-      });
-
-      map.on('mouseenter','unclustered', ()=> map.getCanvas().style.cursor='pointer');
-      map.on('mouseleave','unclustered', ()=> map.getCanvas().style.cursor='');
-
-      sourceReady = true;
-      load(true); // first load (discover zones)
+          <div class="muted" style="margin:-2px 0 8px">${plate || '&nbsp;'}</div>
+          <div class="muted" style="margin:6px 0">⛽ <b>${pct}${range}</b></div>
+          <div class="muted" style="margin:6px 0">📍 ${addr}</div>
+          <div style="margin:8px 0"><a href="${apple}" target="_blank" rel="noopener">Open in Apple Maps</a></div>
+        </div>
+      `;
+      new maplibregl.Popup({ closeButton:true, offset:12 }).setLngLat([lng,lat]).setHTML(html).addTo(map);
     });
 
-    // UI
-    citySel.addEventListener('change', ()=>{
-      currentCity = citySel.value;
-      const cfg = centers[currentCity] || centers.krakow;
-      // Update URL
-      const p = new URLSearchParams(location.search); p.set('city', currentCity); history.replaceState(null,'',`?${p.toString()}`);
-      // Invalidate previous requests & clear layer
-      latestReq++;
-      if (timer) { clearTimeout(timer); timer = null; }
-      if (sourceReady) map.getSource('cars').setData(emptyFC);
-      modelSel.value = '';
-      // Move camera
-      map.easeTo({ center: cfg, zoom: cfg.z });
-      // Load (force discovery if we don't have cached zones)
-      const hasZones = !!getCachedZones(currentCity);
-      load(!hasZones);
-    });
+    map.on('mouseenter','unclustered', ()=> map.getCanvas().style.cursor='pointer');
+    map.on('mouseleave','unclustered', ()=> map.getCanvas().style.cursor='');
 
-    modelSel.addEventListener('change', ()=>{
-      const cache = cityCache.get(currentCity);
-      if (cache?.cars) renderForCity(currentCity, cache.cars);
-    });
+    // generate pie images whenever clusters change
+    map.on('idle', generatePieImages);
 
-    refreshBtn.addEventListener('click', ()=> load());
+    // first load
+    await loadAll(true);
+  });
 
-    // helpers
-    function setCount(n){ countEl.textContent = `${n} ${n===1?'car':'cars'}`; }
-    function buildModels(data){
-      const names = Array.from(new Set(data.map(v=>v.model).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'pl'));
-      const cur = modelSel.value;
-      modelSel.innerHTML = '<option value="">All</option>' + names.map(n=>`<option>${n}</option>`).join('');
-      if (names.includes(cur)) modelSel.value = cur;
+  // pie cache + generator (purple=car, dark-blue=van, turquoise=scooter)
+  const PIE_CACHE = new Set();
+  function pieName(c,v,s){ return `pie_${c}_${v}_${s}`; }
+  function generatePieImages(){
+    const feats = map.queryRenderedFeatures({ layers:['clusters-pie'] });
+    const seen = new Set();
+    for(const f of feats){
+      const c = f.properties.car|0, v = f.properties.van|0, s = f.properties.scooter|0;
+      const name = pieName(c,v,s);
+      if (seen.has(name) || PIE_CACHE.has(name)) continue;
+      seen.add(name);
+      const img = makePie(c,v,s);
+      try{ map.addImage(name, img, { pixelRatio:2 }); PIE_CACHE.add(name); }catch{}
     }
-    function toGeo(data){
-      return {
-        type:'FeatureCollection',
-        features: data.map(v => ({
-          type:'Feature',
-          geometry:{ type:'Point', coordinates:[Number(v.lng), Number(v.lat)] },
-          properties:{
-            id: v.id ?? null,
-            model: v.model ?? 'Vehicle',
-            plate: v.plate ?? '',
-            number: v.number ?? '',
-            pct: (typeof v.pct === 'number') ? v.pct : null,
-            rangeKm: (typeof v.rangeKm === 'number') ? v.rangeKm : null,
-            address: v.address || ''
-          }
-        }))
-      };
+  }
+  function makePie(c,v,s){
+    const size = 64; const r = size/2;
+    const cvs = document.createElement('canvas'); cvs.width = size; cvs.height = size;
+    const g = cvs.getContext('2d');
+
+    // background ring
+    g.beginPath(); g.arc(r,r,r-2,0,Math.PI*2); g.fillStyle='#3e3e45'; g.fill();
+
+    const total = Math.max(1, c+v+s);
+    let start = -Math.PI/2;
+    function slice(val, color){
+      const ang = (val/total) * Math.PI*2;
+      g.beginPath();
+      g.moveTo(r,r);
+      g.arc(r,r,r-4,start,start+ang,false);
+      g.closePath();
+      g.fillStyle = color;
+      g.fill();
+      start += ang;
     }
+    // purple cars, dark-blue vans, turquoise scooters
+    slice(c, '#7b4bff');
+    slice(v, '#1d4ed8');
+    slice(s, '#2dd4bf');
 
-    function renderForCity(city, data){
-      if (city !== currentCity) return; // never paint wrong city
-      cityCache.set(city, { cars: data, ts: Date.now() });
-      buildModels(data);
+    // inner center disk
+    g.beginPath(); g.arc(r,r, r-18, 0, Math.PI*2); g.fillStyle='#121218'; g.fill();
+    // subtle border
+    g.beginPath(); g.arc(r,r, r-1, 0, Math.PI*2); g.strokeStyle='#111'; g.lineWidth=2; g.stroke();
 
-      const mod = modelSel.value.trim();
-      const filtered = data.filter(v => {
-        if (!v) return false;
-        const lat = Number(v.lat), lng = Number(v.lng);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-        if (mod && v.model !== mod) return false;
-        return true;
-      });
+    return cvs;
+  }
 
-      if (sourceReady){
-        const src = map.getSource('cars');
-        if (src) src.setData(toGeo(filtered));
-      }
-      setCount(filtered.length);
+  // state
+  let cityCache = new Map(); // city -> { cars:[], modelsByKind:{car:[],van:[],scooter:[]}, zones:{relocation,nopark,ogarniam} }
+  let latestReq = 0;
+  let timer = null;
 
-      if (filtered.length){
-        const b = new maplibregl.LngLatBounds();
-        filtered.forEach(v => b.extend([Number(v.lng), Number(v.lat)]));
-        try { map.fitBounds(b, { padding: 60, maxZoom: 15 }); } catch {}
-      }
-    }
+  // UI handlers
+  citySel.addEventListener('change', ()=>{
+    currentCity = citySel.value;
+    const cfg = centers[currentCity] || centers.krakow;
+    const p = new URLSearchParams(location.search); p.set('city', currentCity); history.replaceState(null,'',`?${p.toString()}`);
+    if (timer) { clearTimeout(timer); timer=null; }
+    map.getSource('cars')?.setData(emptyFC());
+    setCount(0);
+    selectedModels.clear();
+    renderModelList({car:[],van:[],scooter:[]});
+    map.easeTo({ center: cfg, zoom: cfg.z });
+    loadAll(true);
+  });
 
-    async function load(forceDiscover=false){
-      if (!sourceReady) return;
-      const reqId = ++latestReq;
-      if (timer) { clearTimeout(timer); timer = null; }
+  refreshBtn.addEventListener('click', ()=> loadAll());
 
-      const city = currentCity;
-      const cachedZones = !forceDiscover && getCachedZones(city);
-      const qs = new URLSearchParams({ city });
-      if (cachedZones && cachedZones.length) qs.set('zones', cachedZones.join(','));
+  // zones toggle
+  [relCB, nopCB, ogCB].forEach(cb => cb.addEventListener('change', ()=>{
+    map.setLayoutProperty('relocation-fill','visibility', relCB.checked ? 'visible' : 'none');
+    map.setLayoutProperty('relocation-outline','visibility', relCB.checked ? 'visible' : 'none');
+    map.setLayoutProperty('nopark-fill','visibility',     nopCB.checked ? 'visible' : 'none');
+    map.setLayoutProperty('nopark-outline','visibility',   nopCB.checked ? 'visible' : 'none');
+    map.setLayoutProperty('ogarniam-fill','visibility',    ogCB.checked  ? 'visible' : 'none');
+    map.setLayoutProperty('ogarniam-outline','visibility', ogCB.checked  ? 'visible' : 'none');
+  }));
 
-      try{
-        const res = await fetch(`${API}?${qs.toString()}`);
-        const data = await res.json();
+  function setCount(n){ countEl.textContent = `${n} ${n===1?'car':'cars'}`; }
+  function emptyFC(){ return { type:'FeatureCollection', features: [] }; }
 
-        if (reqId !== latestReq) return; // ignore stale
-
-        if (Array.isArray(data)) {
-          // FAST path (zones known)
-          renderForCity(city, data);
-        } else if (data && Array.isArray(data.cars)) {
-          if (Array.isArray(data.zones) && data.zones.length) setCachedZones(city, data.zones);
-          renderForCity(city, data.cars);
-        } else {
-          const cache = cityCache.get(city);
-          renderForCity(city, cache?.cars || []);
+  function toGeo(data){
+    return {
+      type:'FeatureCollection',
+      features: data.map(v => ({
+        type:'Feature',
+        geometry:{ type:'Point', coordinates:[Number(v.lng), Number(v.lat)] },
+        properties:{
+          id: v.id ?? null, model: v.model ?? 'Vehicle',
+          plate: v.plate ?? '', number: v.number ?? '',
+          pct: (typeof v.pct === 'number') ? v.pct : null,
+          rangeKm: (typeof v.rangeKm === 'number') ? v.rangeKm : null,
+          address: v.address || '',
+          kind: v.kind || 'car'
         }
-      } catch (e) {
-        console.error(e);
-        const cache = cityCache.get(city);
-        renderForCity(city, cache?.cars || []);
-      } finally {
-        // schedule next refresh (latest only)
-        if (reqId === latestReq) {
-          timer = setTimeout(()=> load(false), 20000);
-        }
-      }
+      }))
+    };
+  }
+
+  function renderForCity(city, cars){
+    if (city !== currentCity) return;
+    // client-side model filter
+    const allowAll = selectedModels.size === 0;
+    const filtered = cars.filter(v => allowAll || selectedModels.has(v.model));
+
+    // push to map
+    map.getSource('cars')?.setData(toGeo(filtered));
+    setCount(filtered.length);
+
+    if (filtered.length){
+      const b = new maplibregl.LngLatBounds();
+      filtered.forEach(v => b.extend([Number(v.lng), Number(v.lat)]));
+      try { map.fitBounds(b, { padding: 60, maxZoom: 15 }); } catch {}
     }
-  })();
-  </script>
+  }
+
+  function renderModelList(groups){
+    // groups: {car:[names], van:[names], scooter:[names]}
+    const carsDiv = document.getElementById('models-cars');
+    const vansDiv = document.getElementById('models-vans');
+    const scootDiv= document.getElementById('models-scooters');
+    function fill(el, arr){
+      el.innerHTML = '';
+      arr.sort((a,b)=>a.localeCompare(b,'pl')).forEach(name=>{
+        const id = `mdl-${name.replace(/\W+/g,'-')}`;
+        const wrap = document.createElement('label');
+        wrap.innerHTML = `<input type="checkbox" id="${id}" checked> ${name}`;
+        const cb = wrap.querySelector('input');
+        cb.addEventListener('change', ()=>{
+          if (cb.checked) selectedModels.add(name); else selectedModels.delete(name);
+          // special rule: empty set means "all"
+          const anyChecked = [...document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input')].some(x=>x.checked);
+          if (!anyChecked) selectedModels.clear();
+          const cache = cityCache.get(currentCity);
+          if (cache?.cars) renderForCity(currentCity, cache.cars);
+        });
+        selectedModels.add(name); // default checked
+        el.appendChild(wrap);
+      });
+    }
+    selectedModels.clear(); // reset then re-add defaults
+    fill(carsDiv, groups.car||[]);
+    fill(vansDiv, groups.van||[]);
+    fill(scootDiv, groups.scooter||[]);
+  }
+
+  async function loadAll(forceDiscover=false){
+    const reqId = ++latestReq;
+    // cars
+    try{
+      const qs = new URLSearchParams({ city: currentCity });
+      const cachedZones = localStorage.getItem(`traficar_zones_${currentCity}`);
+      if (cachedZones && !forceDiscover){
+        try{ const z = JSON.parse(cachedZones); if (Array.isArray(z.zones) && (Date.now()-z.ts<10*60*1000)) qs.set('zones', z.zones.join(',')); }catch{}
+      }
+      const res = await fetch(`${API_CARS}?${qs.toString()}`);
+      const data = await res.json();
+      if (reqId !== latestReq) return;
+
+      let cars, zones;
+      if (Array.isArray(data)) { cars = data; }
+      else { cars = data.cars || []; zones = data.zones || []; }
+
+      if (Array.isArray(zones) && zones.length){
+        localStorage.setItem(`traficar_zones_${currentCity}`, JSON.stringify({ zones, ts: Date.now() }));
+      }
+
+      // group models by kind for the checklist
+      const byKind = { car:new Set(), van:new Set(), scooter:new Set() };
+      for (const v of cars) if (v && v.model) (byKind[v.kind||'car']||byKind.car).add(v.model);
+      renderModelList({ car:[...byKind.car], van:[...byKind.van], scooter:[...byKind.scooter] });
+
+      cityCache.set(currentCity, { cars });
+      renderForCity(currentCity, cars);
+    }catch(e){ console.error(e); }
+
+    // areas
+    try{
+      const res = await fetch(`${API_AREAS}?city=${encodeURIComponent(currentCity)}`);
+      const areas = await res.json();
+      if (reqId !== latestReq) return;
+      if (areas?.relocation) map.getSource('zones-relocation')?.setData(areas.relocation);
+      if (areas?.nopark)     map.getSource('zones-nopark')?.setData(areas.nopark);
+      if (areas?.ogarniam)   map.getSource('zones-ogarniam')?.setData(areas.ogarniam);
+    }catch(e){ console.warn('zones not available', e); }
+
+    // auto refresh
+    clearTimeout(timer);
+    timer = setTimeout(()=> loadAll(false), 20000);
+  }
+
+})();
+</script>
 </body>
 </html>
