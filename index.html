@@ -156,18 +156,55 @@
     return { webp: `${base}.webp`, jpg: `${base}.jpg` };
   }
 
-  /* ---------- draw icons (pin + cluster pies) ---------- */
-  // purple pin with a tiny car pictogram
-  function pinImageData(){
-    const size = 64, r = 16, cvs = document.createElement('canvas');
-    cvs.width = size; cvs.height = size; const g = cvs.getContext('2d'); const cx = size/2, cy = size/2;
-    g.beginPath(); g.arc(cx, cy, r+3, 0, Math.PI*2); g.fillStyle = 'rgba(0,0,0,.45)'; g.fill();
-    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.fillStyle = '#7b4bff'; g.fill();
-    g.fillStyle = '#fff';                       // simple "car"
-    g.fillRect(cx-10, cy-6, 20, 10);
-    g.beginPath(); g.arc(cx-6, cy+6, 3, 0, Math.PI*2); g.arc(cx+6, cy+6, 3, 0, Math.PI*2); g.fill();
+  /* ---------- draw icons (colored pins + cluster pies) ---------- */
+  function pinImageData(kind){
+    const color =
+      kind === 'van'     ? '#1d4ed8' :
+      kind === 'scooter' ? '#2dd4bf' : '#7b4bff'; // car default
+
+    const size = 64, r = 16;
+    const cx = size/2, cy = size/2 - 2;
+    const cvs = document.createElement('canvas');
+    cvs.width = size; cvs.height = size;
+    const g = cvs.getContext('2d');
+
+    // shadow
+    g.beginPath();
+    g.ellipse(cx, cy + r + 10, r*0.9, r*0.45, 0, 0, Math.PI*2);
+    g.fillStyle = 'rgba(0,0,0,.45)'; g.fill();
+
+    // head (circle)
+    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2);
+    g.fillStyle = color; g.fill();
+
+    // pointer
+    g.beginPath();
+    g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14);
+    g.closePath(); g.fillStyle = color; g.fill();
+
+    // subtle border
+    g.lineWidth = 2; g.strokeStyle = '#1a1a1a';
+    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.stroke();
+    g.beginPath(); g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14); g.closePath(); g.stroke();
+
+    // white pictograms
+    g.fillStyle = '#fff';
+    if (kind === 'van') {
+      g.fillRect(cx-11, cy-6, 14, 10);            // box
+      g.fillRect(cx+3,  cy-4,  8,  8);            // cab
+      g.beginPath(); g.arc(cx-7, cy+7, 3, 0, Math.PI*2); g.arc(cx+7, cy+7, 3, 0, Math.PI*2); g.fill();
+    } else if (kind === 'scooter') {
+      g.fillRect(cx-8, cy+3, 16, 2.5);            // deck
+      g.beginPath(); g.arc(cx-10, cy+8, 3, 0, Math.PI*2); g.arc(cx+10, cy+8, 3, 0, Math.PI*2); g.fill();
+      g.fillRect(cx+2, cy-6, 2.5, 10);            // stem
+      g.fillRect(cx-1, cy-7.5, 8, 2.5);           // handle
+    } else {
+      g.fillRect(cx-10, cy-5, 20, 9);             // car body
+      g.beginPath(); g.arc(cx-6, cy+6.5, 3, 0, Math.PI*2); g.arc(cx+6, cy+6.5, 3, 0, Math.PI*2); g.fill();
+    }
     return g.getImageData(0,0,size,size);
   }
+
   function pieImageData(c,v,s){
     const size=64*2,r=size/2,cvs=document.createElement('canvas');cvs.width=size;cvs.height=size;const g=cvs.getContext('2d');
     g.beginPath();g.arc(r,r,r-4,0,Math.PI*2);g.fillStyle='#3e3e45';g.fill();
@@ -190,7 +227,11 @@
   map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
   map.on('load', async () => {
-    try { map.addImage('car-pin', pinImageData(), { pixelRatio:2 }); } catch {}
+    try {
+      map.addImage('pin-car',     pinImageData('car'),     { pixelRatio:2 });
+      map.addImage('pin-van',     pinImageData('van'),     { pixelRatio:2 });
+      map.addImage('pin-scooter', pinImageData('scooter'), { pixelRatio:2 });
+    } catch {}
 
     map.addSource('cars', {
       type:'geojson', data: emptyFC(),
@@ -227,13 +268,21 @@
               'text-font':['Open Sans Semibold','Arial Unicode MS Bold'],'text-offset':[0,0],'text-allow-overlap':true},
       paint:{'text-color':'#ffffff','text-halo-color':'#111','text-halo-width':1.2}});
 
-    // purple pin for each single vehicle
+    // colored pins for single vehicles
     map.addLayer({
       id: 'cars-pin',
       type: 'symbol',
       source: 'cars',
       filter: ['!',['has','point_count']],
-      layout: { 'icon-image':'car-pin', 'icon-size':1, 'icon-allow-overlap':true }
+      layout: {
+        'icon-image': ['match', ['get','kind'],
+          'van',     'pin-van',
+          'scooter', 'pin-scooter',
+          /* default */ 'pin-car'
+        ],
+        'icon-size': 1,
+        'icon-allow-overlap': true
+      }
     });
 
     // overlays
