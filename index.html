@@ -30,7 +30,7 @@
   .spacer{flex:1}
   .count{background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
 
-  /* right filter panel (compact like your screenshot) */
+  /* filter panel */
   .panel{
     position:fixed; right:12px; top:64px; z-index:11;
     background:rgba(23,23,28,.92); backdrop-filter: blur(8px);
@@ -38,9 +38,9 @@
     padding:12px; width:240px; box-shadow:var(--shadow);
   }
   .panel h4{margin:8px 0 6px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
-  .panel .row{display:flex; align-items:center; gap:8px; margin:6px 0; font-size:14px}
+  .row{display:flex; align-items:center; gap:10px; margin:6px 0; font-size:14px}
   .panel input[type="checkbox"]{width:18px; height:18px; cursor:pointer; accent-color:#7b4bff}
-  .panel .small{display:flex; gap:10px; margin-top:4px;}
+  .panel .small{display:flex; gap:12px; margin:4px 0 2px}
   .panel .small a{font-size:12px; color:#bfc0ca; text-decoration:underline; cursor:pointer}
 
   .badge{background:#7b4bff;color:#fff;padding:4px 10px;border-radius:10px;font-weight:800;display:inline-block;min-width:52px;text-align:center}
@@ -75,7 +75,7 @@
 </div>
 
 <!-- Right filter panel -->
-<div class="panel" id="filters">
+<div class="panel">
   <h4>Osobowe</h4>
   <div id="models-cars"></div>
   <h4>Dostawcze</h4>
@@ -92,25 +92,13 @@
 
 <script>
 (function(){
-  // Put your MapTiler key here (IN QUOTES)
+  // 1) Put your MapTiler key here (IN QUOTES)
   const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC';
 
   const API_CARS  = '/.netlify/functions/traficar-auto';
   const API_AREAS = '/.netlify/functions/traficar-areas';
 
-  // Optional: per-model photo lookup (drop files into /img/ with these names)
-  function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
-  function modelImage(model, kind){
-    const file = `/img/${slug(model)}.jpg`;
-    // we can't pre-check file existence cheaply; set it and let onerror swap to silhouette
-    const fallback = {
-      car: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><path d="M70 210h500a20 20 0 0 0 20-20v-25c0-10-5-20-14-26l-55-35c-8-5-17-8-27-8H227l-45-40c-8-7-19-11-30-11H95c-12 0-22 7-26 18l-20 54c-3 8-10 13-18 13H20v60h30a35 35 0 0 0 70 0h330a35 35 0 0 0 70 0h30v-10H70v10z"/></g></svg>',
-      van: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><path d="M60 210h520c11 0 20-9 20-20v-60c0-6-3-12-8-16l-80-60c-4-3-9-4-14-4H180c-17 0-30 13-30 30v20H60v110z"/></g></svg>',
-      scooter: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><circle cx="150" cy="210" r="35"/><circle cx="480" cy="210" r="35"/><path d="M190 210h220l-40-110h-40l32 88H200zM360 100h40l-10-40h-40z"/></g></svg>'
-    }[kind||'car'];
-    return { src: file, fallback };
-  }
-
+  // --- small helpers/state ---
   const centers = {
     krakow:{lng:19.9383,lat:50.0614,z:13}, warszawa:{lng:21.0122,lat:52.2297,z:12},
     wroclaw:{lng:17.0385,lat:51.1079,z:13}, poznan:{lng:16.9252,lat:52.4064,z:13},
@@ -118,7 +106,6 @@
     lublin:{lng:22.5684,lat:51.2465,z:13}, lodz:{lng:19.4550,lat:51.7592,z:12},
     szczecin:{lng:14.5528,lat:53.4285,z:12}, rzeszow:{lng:21.9990,lat:50.0413,z:13}
   };
-
   const params = new URLSearchParams(location.search);
   const initialCity = centers[params.get('city')] ? params.get('city') : 'krakow';
 
@@ -134,11 +121,35 @@
   citySel.value = initialCity;
   let currentCity = citySel.value;
 
-  // Per-city selection set (empty = show NONE)
-  const modelSelections = new Map(); // city -> Set(model)
-  const modelOptions    = new Map(); // city -> {car:[],van:[],scooter:[]}
+  // Per-city selection set: Set(modelName). Empty set = show NONE.
+  const modelSelections = new Map();
+  const modelOptions    = new Map();
+  let lastUIChange = 0;
+  function noteUI(){ lastUIChange = Date.now(); }
 
-  // Map
+  // --- model image lookup (uses your -traficar filenames) ---
+  function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
+  const SILHOUETTES = {
+    car: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><path d="M70 210h500a20 20 0 0 0 20-20v-25c0-10-5-20-14-26l-55-35c-8-5-17-8-27-8H227l-45-40c-8-7-19-11-30-11H95c-12 0-22 7-26 18l-20 54c-3 8-10 13-18 13H20v60h30a35 35 0 0 0 70 0h330a35 35 0 0 0 70 0h30v-10H70v10z"/></g></svg>',
+    van: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><path d="M60 210h520c11 0 20-9 20-20v-60c0-6-3-12-8-16l-80-60c-4-3-9-4-14-4H180c-17 0-30 13-30 30v20H60v110z"/></g></svg>',
+    scooter: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><circle cx="150" cy="210" r="35"/><circle cx="480" cy="210" r="35"/><path d="M190 210h220l-40-110h-40l32 88H200zM360 100h40l-10-40h-40z"/></g></svg>'
+  };
+  const CUSTOM_FILE_BY_MODEL = {
+    'renault-arkana':  'renault-arkana-traficar',
+    'renault-clio-v':  'renault-clio-traficar',
+    'dacia-sandero':   'dacia-sandero-traficar',
+    'dacia-dokker':    'dacia-dokker-traficar',
+    'renault-express': 'renault-express-traficar',
+    'renault-master':  'renault-master-traficar',
+    'navee-d1-pro':    'NAVEE-D1-PRO-traficar'
+  };
+  function modelImage(model, kind){
+    const s = slug(model);
+    const base = CUSTOM_FILE_BY_MODEL[s] ? `/img/${CUSTOM_FILE_BY_MODEL[s]}` : `/img/${s}`;
+    return { webp: `${base}.webp`, jpg: `${base}.jpg`, fallback: SILHOUETTES[kind||'car'] };
+  }
+
+  // --- Map ---
   const map = new maplibregl.Map({
     container:'map',
     style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
@@ -149,7 +160,7 @@
   map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
   map.on('load', async () => {
-    // cars source with cluster counters
+    // Cars source with cluster counters
     map.addSource('cars', {
       type:'geojson',
       data: emptyFC(),
@@ -161,44 +172,30 @@
       }
     });
 
-    // PIE ICON generation (ImageData → works everywhere)
+    // Pie icon generation (ImageData) + background circle
     const PIE_CACHE = new Set();
     map.on('styleimagemissing', (e) => {
       const m = /^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id);
       if (!m || PIE_CACHE.has(e.id)) return;
-      try {
-        map.addImage(e.id, pieImageData(+m[1], +m[2], +m[3]), { pixelRatio:2 });
-        PIE_CACHE.add(e.id);
-        map.triggerRepaint();
-      } catch {}
+      try { map.addImage(e.id, pieImageData(+m[1],+m[2],+m[3]), { pixelRatio:2 }); PIE_CACHE.add(e.id); map.triggerRepaint(); } catch {}
     });
     map.on('idle', () => {
       const feats = map.queryRenderedFeatures({ layers:['clusters-pie'] });
       for (const f of feats) {
         const id = `pie_${f.properties.car|0}_${f.properties.van|0}_${f.properties.scooter|0}`;
-        if (!map.hasImage(id)) {
-          try { map.addImage(id, pieImageData(f.properties.car|0, f.properties.van|0, f.properties.scooter|0), { pixelRatio:2 }); } catch {}
-        }
+        if (!map.hasImage(id)) { try { map.addImage(id, pieImageData(f.properties.car|0, f.properties.van|0, f.properties.scooter|0), { pixelRatio:2 }); } catch {} }
       }
     });
-
-    // background circle so clusters are visible instantly
     map.addLayer({
       id:'clusters-bg', type:'circle', source:'cars', filter:['has','point_count'],
-      paint:{
-        'circle-color':'#3e3e45',
-        'circle-stroke-color':'#111',
-        'circle-stroke-width':2,
-        'circle-radius':['interpolate', ['linear'], ['get','point_count'], 2, 14, 50, 18, 200, 24, 500, 28]
-      }
+      paint:{ 'circle-color':'#3e3e45','circle-stroke-color':'#111','circle-stroke-width':2,
+              'circle-radius':['interpolate',['linear'],['get','point_count'],2,14,50,18,200,24,500,28] }
     });
-
-    // pie icon + number
     map.addLayer({
       id:'clusters-pie', type:'symbol', source:'cars', filter:['has','point_count'],
       layout:{
         'icon-image': ['concat','pie_', ['to-string',['coalesce',['get','car'],0]], '_', ['to-string',['coalesce',['get','van'],0]], '_', ['to-string',['coalesce',['get','scooter'],0]]],
-        'icon-size': ['interpolate', ['linear'], ['get','point_count'], 2, 0.85, 50, 1.0, 200, 1.25, 500, 1.5],
+        'icon-size': ['interpolate',['linear'],['get','point_count'],2,0.85,50,1.0,200,1.25,500,1.5],
         'icon-allow-overlap': true,
         'text-field': ['get','point_count_abbreviated'],
         'text-size': 12,
@@ -209,7 +206,7 @@
       paint:{ 'text-color':'#ffffff', 'text-halo-color':'#111', 'text-halo-width':1.2 }
     });
 
-    // unclustered points
+    // Unclustered points
     map.addLayer({
       id:'unclustered', type:'circle', source:'cars', filter:['!',['has','point_count']],
       paint:{
@@ -218,7 +215,7 @@
       }
     });
 
-    // overlays
+    // Overlays
     map.addSource('zones-relocation', { type:'geojson', data: emptyFC() });
     map.addSource('zones-nopark',     { type:'geojson', data: emptyFC() });
     map.addSource('zones-ogarniam',   { type:'geojson', data: emptyFC() });
@@ -229,7 +226,7 @@
     map.addLayer({ id:'ogarniam-fill', type:'fill', source:'zones-ogarniam', paint:{ 'fill-color':'#a56cff', 'fill-opacity':0.16 }});
     map.addLayer({ id:'ogarniam-outline', type:'line', source:'zones-ogarniam', paint:{ 'line-color':'#a56cff', 'line-width':2 }});
 
-    // popup with image on top
+    // Popup with image on top
     map.on('click','unclustered', (e)=>{
       const v = e.features[0].properties;
       const [lng,lat] = e.features[0].geometry.coordinates;
@@ -244,7 +241,10 @@
       const img = modelImage(v.model, v.kind);
       const html = `
         <div class="infocard">
-          <img class="carimg" src="${img.src}" onerror="this.src='${img.fallback}'" alt="${v.model||'Vehicle'}"/>
+          <picture>
+            <source type="image/webp" srcset="${img.webp}">
+            <img class="carimg" src="${img.jpg}" onerror="this.src='${img.fallback}'" alt="${v.model||'Vehicle'}">
+          </picture>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
             <span class="badge">${badge}</span>
             <div class="title">${v.model || 'Vehicle'}</div>
@@ -261,15 +261,12 @@
     await loadAll(true, { fit:true });
   });
 
-  // Generate cluster pie as ImageData (safer than canvas element in some engines)
+  // Draw cluster pies as ImageData (robust)
   function pieImageData(c,v,s){
-    const size = 64*2; // retina
-    const r = size/2;
+    const size = 64*2; const r = size/2;
     const cvs = document.createElement('canvas'); cvs.width=size; cvs.height=size;
     const g = cvs.getContext('2d');
-    // base ring
     g.beginPath(); g.arc(r,r,r-4,0,Math.PI*2); g.fillStyle='#3e3e45'; g.fill();
-
     const total = Math.max(1, c+v+s);
     let start = -Math.PI/2;
     const slice = (val,color)=>{
@@ -280,15 +277,12 @@
     slice(c,'#7b4bff'); // cars
     slice(v,'#1d4ed8'); // vans
     slice(s,'#2dd4bf'); // scooters
-
-    // inner disk + border
     g.beginPath(); g.arc(r,r,r-28,0,Math.PI*2); g.fillStyle='#121218'; g.fill();
     g.beginPath(); g.arc(r,r,r-3,0,Math.PI*2); g.strokeStyle='#111'; g.lineWidth=4; g.stroke();
-
     return g.getImageData(0,0,size,size);
   }
 
-  // ---------- state/helpers ----------
+  // --- state/helpers ---
   let timer = null;
   window.__CITY_CACHE = { cars: [] };
 
@@ -313,10 +307,10 @@
     };
   }
 
-  // Apply current selection; empty Set => show NONE (don’t recenter)
+  // Apply current selection; empty set => NONE; don’t recenter unless asked
   function applyFilterAndRender({fit=false}={}){
     const cars = window.__CITY_CACHE.cars || [];
-    const sel  = modelSelections.get(currentCity) || new Set();
+    const sel  = modelSelections.get(currentCity) || new Set(); // empty shows none
     const filtered = sel.size ? cars.filter(v => sel.has(v.model)) : [];
     map.getSource('cars')?.setData(toGeo(filtered));
     setCount(filtered.length);
@@ -327,33 +321,24 @@
     }
   }
 
-  // Build/refresh the checklist — ONLY when needed
-  function modelsEqual(a,b){
-    const ax = (a||[]).slice().sort().join('|');
-    const bx = (b||[]).slice().sort().join('|');
-    return ax===bx;
-  }
+  // Build/rebuild model checkboxes only when models actually change
+  function sameList(a=[],b=[]){ return a.slice().sort().join('|')===b.slice().sort().join('|'); }
   function buildModelPanelIfNeeded(grouped){
     const prev = modelOptions.get(currentCity);
-    const needsBuild = !prev ||
-      !modelsEqual(prev.car, grouped.car) ||
-      !modelsEqual(prev.van, grouped.van) ||
-      !modelsEqual(prev.scooter, grouped.scooter);
-
-    if (!needsBuild) return; // keep current checkboxes untouched
+    const need = !prev || !sameList(prev.car, grouped.car) || !sameList(prev.van, grouped.van) || !sameList(prev.scooter, grouped.scooter);
+    if (!need) return;
 
     modelOptions.set(currentCity, grouped);
 
-    // init selection for this city ONCE to "all checked"
+    // init selection for this city ONCE to “all checked”
     if (!modelSelections.has(currentCity)) {
       modelSelections.set(currentCity, new Set([...(grouped.car||[]), ...(grouped.van||[]), ...(grouped.scooter||[])]));
     } else {
-      // keep user choices; add any new models as checked; remove missing
+      // keep user choices; add any new models (checked), drop removed ones
       const set = modelSelections.get(currentCity);
-      for (const name of [...(grouped.car||[]), ...(grouped.van||[]), ...(grouped.scooter||[])]) set.add(name);
-      for (const name of Array.from(set)) {
-        if (![...(grouped.car||[]), ...(grouped.van||[]), ...(grouped.scooter||[])].includes(name)) set.delete(name);
-      }
+      const all = [...(grouped.car||[]), ...(grouped.van||[]), ...(grouped.scooter||[])];
+      for (const n of all) set.add(n);
+      for (const n of Array.from(set)) if (!all.includes(n)) set.delete(n);
     }
 
     const carsDiv = document.getElementById('models-cars');
@@ -372,6 +357,7 @@
         cb.addEventListener('change', ()=>{
           const set = modelSelections.get(currentCity);
           if (cb.checked) set.add(name); else set.delete(name);
+          noteUI();
           applyFilterAndRender({fit:false});
         });
         el.appendChild(row);
@@ -382,22 +368,22 @@
     fill(scootDiv, grouped.scooter);
   }
 
-  // Select all / none
+  // Select all / none links
   allBtn.addEventListener('click', ()=>{
     const opts = modelOptions.get(currentCity) || {car:[],van:[],scooter:[]};
     modelSelections.set(currentCity, new Set([...(opts.car||[]), ...(opts.van||[]), ...(opts.scooter||[])]));
-    buildModelPanelIfNeeded(opts); // ensures checkboxes reflect the set
-    // Manually tick all visible boxes
     document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb => cb.checked = true);
+    noteUI();
     applyFilterAndRender({fit:false});
   });
   noneBtn.addEventListener('click', ()=>{
-    modelSelections.set(currentCity, new Set()); // empty => show none
+    modelSelections.set(currentCity, new Set());
     document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb => cb.checked = false);
+    noteUI();
     applyFilterAndRender({fit:false});
   });
 
-  // UI
+  // City change / refresh
   citySel.addEventListener('change', ()=>{
     currentCity = citySel.value;
     const cfg = centers[currentCity] || centers.krakow;
@@ -408,21 +394,19 @@
     map.easeTo({ center: cfg, zoom: cfg.z });
     loadAll(true, { fit:true });
   });
-
   refreshBtn.addEventListener('click', ()=> loadAll(false, { fit:false }));
 
-  // overlays toggles
+  // overlay toggles
   relCB.addEventListener('change', (e)=> toggleLayer('relocation', e.target.checked));
   nopCB.addEventListener('change', (e)=> toggleLayer('nopark', e.target.checked));
   ogCB .addEventListener('change', (e)=> toggleLayer('ogarniam', e.target.checked));
-  function toggleLayer(key, on){
+  function toggleLayer(key,on){
     const v = on ? 'visible' : 'none';
     map.setLayoutProperty(`${key}-fill`,'visibility',v);
     map.setLayoutProperty(`${key}-outline`,'visibility',v);
   }
 
-  // load everything
-  window.__CITY_CACHE = { cars: [] };
+  // Load cars + zones; don’t clobber UI if user just clicked
   async function loadAll(first=false, {fit=false}={}){
     try{
       const qs = new URLSearchParams({ city: currentCity });
@@ -445,9 +429,11 @@
       for (const v of cars) if (v && v.model) (byKind[v.kind||'car']||byKind.car).add(v.model);
       const grouped = { car:[...byKind.car], van:[...byKind.van], scooter:[...byKind.scooter] };
 
-      buildModelPanelIfNeeded(grouped); // only rebuild if models changed
+      const tooSoon = Date.now() - lastUIChange < 1500; // don’t rebuild right after a click
+      if (!tooSoon) buildModelPanelIfNeeded(grouped);
+
       window.__CITY_CACHE.cars = cars;
-      applyFilterAndRender({fit}); // keep map position on filter changes
+      applyFilterAndRender({fit});
     }catch(e){ console.error(e); }
 
     try{
@@ -463,7 +449,6 @@
   }
 
   function emptyFC(){ return { type:'FeatureCollection', features: [] }; }
-
 })();
 </script>
 </body>
