@@ -55,6 +55,11 @@
   .carimg{width:100%;height:auto;max-height:150px;object-fit:contain;border-radius:10px;background:transparent;margin-bottom:8px;display:block}
   .title{font-weight:800;font-size:16px;color:var(--ink)}
   .divider{height:1px;background:var(--divider);margin:6px 0 8px}
+
+  /* refresh spinner */
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-2px;margin-left:8px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  button[disabled]{opacity:.6;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -76,7 +81,7 @@
       <option value="rzeszow">Rzeszów</option>
     </select>
   </label>
-  <button id="refresh">Refresh</button>
+  <button id="refresh">Refresh <span id="spin" class="spinner" style="display:none"></span></button>
   <div class="spacer"></div>
   <div id="count" class="count">0 cars</div>
 </div>
@@ -99,7 +104,7 @@
 
 <script>
 (function(){
-  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // put your key IN QUOTES
+  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // ← put your key IN QUOTES
 
   const API_CARS  = '/.netlify/functions/traficar-auto';
   const API_AREAS = '/.netlify/functions/traficar-areas';
@@ -117,12 +122,15 @@
 
   const citySel = document.getElementById('city');
   const refreshBtn = document.getElementById('refresh');
+  const spinEl = document.getElementById('spin');
   const countEl = document.getElementById('count');
   const allBtn = document.getElementById('all');
   const noneBtn= document.getElementById('none');
   const relCB = document.getElementById('toggle-rel');
   const nopCB = document.getElementById('toggle-nop');
   const ogCB  = document.getElementById('toggle-og');
+
+  const setRefreshing = (on)=>{ refreshBtn.disabled = !!on; spinEl.style.display = on?'inline-block':'none'; };
 
   citySel.value = initialCity;
   let currentCity = citySel.value;
@@ -148,6 +156,29 @@
     return { webp: `${base}.webp`, jpg: `${base}.jpg` };
   }
 
+  /* ---------- draw icons (pin + cluster pies) ---------- */
+  // purple pin with a tiny car pictogram
+  function pinImageData(){
+    const size = 64, r = 16, cvs = document.createElement('canvas');
+    cvs.width = size; cvs.height = size; const g = cvs.getContext('2d'); const cx = size/2, cy = size/2;
+    g.beginPath(); g.arc(cx, cy, r+3, 0, Math.PI*2); g.fillStyle = 'rgba(0,0,0,.45)'; g.fill();
+    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.fillStyle = '#7b4bff'; g.fill();
+    g.fillStyle = '#fff';                       // simple "car"
+    g.fillRect(cx-10, cy-6, 20, 10);
+    g.beginPath(); g.arc(cx-6, cy+6, 3, 0, Math.PI*2); g.arc(cx+6, cy+6, 3, 0, Math.PI*2); g.fill();
+    return g.getImageData(0,0,size,size);
+  }
+  function pieImageData(c,v,s){
+    const size=64*2,r=size/2,cvs=document.createElement('canvas');cvs.width=size;cvs.height=size;const g=cvs.getContext('2d');
+    g.beginPath();g.arc(r,r,r-4,0,Math.PI*2);g.fillStyle='#3e3e45';g.fill();
+    const T=Math.max(1,c+v+s);let a=-Math.PI/2;
+    const slice=(n,col)=>{const ang=(n/T)*Math.PI*2;g.beginPath();g.moveTo(r,r);g.arc(r,r,r-8,a,a+ang,false);g.closePath();g.fillStyle=col;g.fill();a+=ang;};
+    slice(c,'#7b4bff'); slice(v,'#1d4ed8'); slice(s,'#2dd4bf');
+    g.beginPath();g.arc(r,r,r-28,0,Math.PI*2);g.fillStyle='#121218';g.fill();
+    g.beginPath();g.arc(r,r,r-3,0,Math.PI*2);g.strokeStyle='#111';g.lineWidth=4;g.stroke();
+    return g.getImageData(0,0,size,size);
+  }
+
   /* ---------- map ---------- */
   const map = new maplibregl.Map({
     container:'map',
@@ -159,6 +190,8 @@
   map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
   map.on('load', async () => {
+    try { map.addImage('car-pin', pinImageData(), { pixelRatio:2 }); } catch {}
+
     map.addSource('cars', {
       type:'geojson', data: emptyFC(),
       cluster:true, clusterRadius:64, clusterMaxZoom:14,
@@ -194,9 +227,14 @@
               'text-font':['Open Sans Semibold','Arial Unicode MS Bold'],'text-offset':[0,0],'text-allow-overlap':true},
       paint:{'text-color':'#ffffff','text-halo-color':'#111','text-halo-width':1.2}});
 
-    map.addLayer({ id:'unclustered', type:'circle', source:'cars', filter:['!',['has','point_count']],
-      paint:{'circle-color':['case',['!', ['has','pct']], '#8e8e93', ['>=', ['get','pct'], 50], '#3ddc84', ['>=', ['get','pct'], 20], '#ffb020', '#ff6b6b'],
-             'circle-stroke-color':'#111','circle-stroke-width':2,'circle-radius':8 }});
+    // purple pin for each single vehicle
+    map.addLayer({
+      id: 'cars-pin',
+      type: 'symbol',
+      source: 'cars',
+      filter: ['!',['has','point_count']],
+      layout: { 'icon-image':'car-pin', 'icon-size':1, 'icon-allow-overlap':true }
+    });
 
     // overlays
     map.addSource('zones-relocation',{type:'geojson',data:emptyFC()});
@@ -209,8 +247,8 @@
     map.addLayer({id:'ogarniam-fill',type:'fill',source:'zones-ogarniam',paint:{'fill-color':'#a56cff','fill-opacity':0.16}});
     map.addLayer({id:'ogarniam-outline',type:'line',source:'zones-ogarniam',paint:{'line-color':'#a56cff','line-width':2}});
 
-    // popup
-    map.on('click','unclustered',(e)=>{
+    // click popup on pin
+    map.on('click','cars-pin',(e)=>{
       const v=e.features[0].properties; const [lng,lat]=e.features[0].geometry.coordinates;
       const badge=v.number?v.number:(v.id?String(v.id).slice(-4):''); const plate=v.plate||'';
       const pct=(v.pct!=null)?`${v.pct}%`:'—'; const range=(v.rangeKm!=null)?` (${v.rangeKm} km)`:'';
@@ -238,20 +276,24 @@
       new maplibregl.Popup({closeButton:true,offset:12}).setLngLat([lng,lat]).setHTML(html).addTo(map);
     });
 
+    // hover tooltip
+    let hoverPopup = null;
+    map.on('mouseenter','cars-pin', (e)=>{
+      map.getCanvas().style.cursor = 'pointer';
+      const p = e.features[0].properties;
+      const txt = `${p.model || 'Vehicle'}${p.number ? ' • ' + p.number : ''}`;
+      hoverPopup = new maplibregl.Popup({ closeButton:false, closeOnClick:false, offset:10 })
+        .setLngLat(e.features[0].geometry.coordinates)
+        .setText(txt)
+        .addTo(map);
+    });
+    map.on('mouseleave','cars-pin', ()=>{
+      map.getCanvas().style.cursor = '';
+      if (hoverPopup) { hoverPopup.remove(); hoverPopup = null; }
+    });
+
     await loadAll(true,{fit:true});
   });
-
-  // cluster pie (ImageData)
-  function pieImageData(c,v,s){
-    const size=64*2,r=size/2,cvs=document.createElement('canvas');cvs.width=size;cvs.height=size;const g=cvs.getContext('2d');
-    g.beginPath();g.arc(r,r,r-4,0,Math.PI*2);g.fillStyle='#3e3e45';g.fill();
-    const T=Math.max(1,c+v+s);let a=-Math.PI/2;
-    const slice=(n,col)=>{const ang=(n/T)*Math.PI*2;g.beginPath();g.moveTo(r,r);g.arc(r,r,r-8,a,a+ang,false);g.closePath();g.fillStyle=col;g.fill();a+=ang;};
-    slice(c,'#7b4bff'); slice(v,'#1d4ed8'); slice(s,'#2dd4bf');
-    g.beginPath();g.arc(r,r,r-28,0,Math.PI*2);g.fillStyle='#121218';g.fill();
-    g.beginPath();g.arc(r,r,r-3,0,Math.PI*2);g.strokeStyle='#111';g.lineWidth=4;g.stroke();
-    return g.getImageData(0,0,size,size);
-  }
 
   /* ---------- data/filter plumbing ---------- */
   let timer=null; window.__CITY_CACHE={cars:[]};
@@ -328,9 +370,13 @@
     loadAll(true, { fit:true });  // rebuilds filters to "all checked"
   });
 
-  refreshBtn.addEventListener('click',()=>loadAll(false,{fit:false}));
+  // Refresh with spinner
+  refreshBtn.addEventListener('click',()=>{
+    setRefreshing(true);
+    loadAll(false,{fit:false}).finally(()=> setRefreshing(false));
+  });
 
-  // overlays
+  // overlays toggles
   relCB.addEventListener('change',e=>toggleLayer('relocation',e.target.checked));
   nopCB.addEventListener('change',e=>toggleLayer('nopark',e.target.checked));
   ogCB .addEventListener('change',e=>toggleLayer('ogarniam',e.target.checked));
@@ -353,13 +399,27 @@
     try{
       const res=await fetch(`${API_AREAS}?city=${encodeURIComponent(currentCity)}`);
       const areas=await res.json();
-      if(areas?.relocation) map.getSource('zones-relocation')?.setData(areas.relocation);
-      if(areas?.nopark)     map.getSource('zones-nopark')?.setData(areas.nopark);
-      if(areas?.ogarniam)   map.getSource('zones-ogarniam')?.setData(areas.ogarniam);
-    }catch(e){}
+
+      let any=false;
+      if(areas?.relocation){ map.getSource('zones-relocation')?.setData(areas.relocation); any=true; }
+      if(areas?.nopark)    { map.getSource('zones-nopark')?.setData(areas.nopark);       any=true; }
+      if(areas?.ogarniam)  { map.getSource('zones-ogarniam')?.setData(areas.ogarniam);   any=true; }
+
+      // static fallback if function doesn't provide polygons
+      if(!any){
+        const tryOne = async (suffix, srcId) => {
+          const r = await fetch(`/zones/${currentCity}-${suffix}.geojson`);
+          if (r.ok) { const gj = await r.json(); map.getSource(srcId)?.setData(gj); }
+        };
+        await Promise.all([
+          tryOne('relokacja','zones-relocation'),
+          tryOne('nopark','zones-nopark'),
+          tryOne('ogarniam','zones-ogarniam')
+        ]);
+      }
+    }catch(e){ /* ignore zones errors */ }
     clearTimeout(timer); timer=setTimeout(()=>loadAll(false,{fit:false}),20000);
   }
-
 })();
 </script>
 </body>
