@@ -99,7 +99,7 @@
 
 <script>
 (function(){
-  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // ← put your key IN QUOTES
+  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // put your key IN QUOTES
 
   const API_CARS  = '/.netlify/functions/traficar-auto';
   const API_AREAS = '/.netlify/functions/traficar-areas';
@@ -127,16 +127,12 @@
   citySel.value = initialCity;
   let currentCity = citySel.value;
 
-  const modelSelections = new Map(); // city -> Set(model)
-  const modelOptions    = new Map(); // city -> {car:[],van:[],scooter:[]}
+  // selections: city -> Set(model). We'll reset on city change.
+  const modelSelections = new Map();
+  const modelOptions    = new Map();
   let lastUIChange = 0; const noteUI = ()=>{ lastUIChange = Date.now(); };
 
   function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
-  const SILHOUETTES = {
-    car: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%23ffffff"/><g fill="%23999"><path d="M70 210h500a20 20 0 0 0 20-20v-25c0-10-5-20-14-26l-55-35c-8-5-17-8-27-8H227l-45-40c-8-7-19-11-30-11H95c-12 0-22 7-26 18l-20 54c-3 8-10 13-18 13H20v60h30a35 35 0 0 0 70 0h330a35 35 0 0 0 70 0h30v-10H70v10z"/></g></svg>',
-    van: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%23ffffff"/><g fill="%23999"><path d="M60 210h520c11 0 20-9 20-20v-60c0-6-3-12-8-16l-80-60c-4-3-9-4-14-4H180c-17 0-30 13-30 30v20H60v110z"/></g></svg>',
-    scooter: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%23ffffff"/><g fill="%23999"><circle cx="150" cy="210" r="35"/><circle cx="480" cy="210" r="35"/><path d="M190 210h220l-40-110h-40l32 88H200zM360 100h40l-10-40h-40z"/></g></svg>'
-  };
   const CUSTOM_FILE_BY_MODEL = {
     'renault-arkana':  'renault-arkana-traficar',
     'renault-clio-v':  'renault-clio-traficar',
@@ -146,10 +142,10 @@
     'renault-master':  'renault-master-traficar',
     'navee-d1-pro':    'NAVEE-D1-PRO-traficar'
   };
-  function modelImage(model, kind){
+  function modelImage(model){
     const s = slug(model);
     const base = CUSTOM_FILE_BY_MODEL[s] ? `/img/${CUSTOM_FILE_BY_MODEL[s]}` : `/img/${s}`;
-    return { webp: `${base}.webp`, jpg: `${base}.jpg`, fallback: SILHOUETTES[kind||'car'] };
+    return { webp: `${base}.webp`, jpg: `${base}.jpg` };
   }
 
   /* ---------- map ---------- */
@@ -219,7 +215,7 @@
       const badge=v.number?v.number:(v.id?String(v.id).slice(-4):''); const plate=v.plate||'';
       const pct=(v.pct!=null)?`${v.pct}%`:'—'; const range=(v.rangeKm!=null)?` (${v.rangeKm} km)`:'';
       const addr=v.address||''; const apple=`https://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(v.model||'Car')}`;
-      const img=modelImage(v.model,v.kind);
+      const img=modelImage(v.model);
       const titleEsc = String(v.model||'Vehicle').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
       const html=`
@@ -227,7 +223,7 @@
           <img class="carimg"
                loading="lazy"
                src="${img.webp}"
-               onerror="if(this.dataset.step!=='jpg'){this.dataset.step='jpg';this.src='${img.jpg}';}else{this.onerror=null;this.src='${img.fallback}';}"
+               onerror="if(this.dataset.step!=='jpg'){this.dataset.step='jpg';this.src='${img.jpg}';}else{this.onerror=null;this.style.display='none';}"
                alt="${titleEsc}">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
             <span class="badge">${badge}</span>
@@ -275,17 +271,17 @@
     const prev=modelOptions.get(currentCity); const need=!prev||!sameList(prev.car,grouped.car)||!sameList(prev.van,grouped.van)||!sameList(prev.scooter,grouped.scooter);
     if(!need) return;
     modelOptions.set(currentCity,grouped);
-    if(!modelSelections.has(currentCity)){ modelSelections.set(currentCity,new Set([...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])])); }
-    else{ const set=modelSelections.get(currentCity); const all=[...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])]; for(const n of all)set.add(n); for(const n of Array.from(set)) if(!all.includes(n)) set.delete(n); }
+    // init selection to "all checked"
+    modelSelections.set(currentCity,new Set([...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])]));
+
     const carsDiv=document.getElementById('models-cars'),vansDiv=document.getElementById('models-vans'),scootDiv=document.getElementById('models-scooters');
     function fill(el,arr){
       el.innerHTML='';
       (arr||[]).sort((a,b)=>a.localeCompare(b,'pl')).forEach(name=>{
         const id=`${currentCity}-mdl-${name.replace(/\W+/g,'-')}`;
         const row=document.createElement('div'); row.className='row';
-        row.innerHTML=`<input type="checkbox" id="${id}"><label for="${id}">${name}</label>`;
+        row.innerHTML=`<input type="checkbox" id="${id}" checked><label for="${id}">${name}</label>`;
         const cb=row.querySelector('input');
-        cb.checked=modelSelections.get(currentCity).has(name);
         cb.addEventListener('change',()=>{
           const set=modelSelections.get(currentCity);
           if(cb.checked)set.add(name); else set.delete(name);
@@ -297,6 +293,7 @@
     fill(carsDiv,grouped.car); fill(vansDiv,grouped.van); fill(scootDiv,grouped.scooter);
   }
 
+  // Select all / none
   allBtn.addEventListener('click',()=>{
     const opts=modelOptions.get(currentCity)||{car:[],van:[],scooter:[]};
     modelSelections.set(currentCity,new Set([...(opts.car||[]),...(opts.van||[]),...(opts.scooter||[])]));
@@ -309,31 +306,31 @@
     noteUI(); applyFilterAndRender({fit:false});
   });
 
+  // City change — ALWAYS reset filters for the city we switch to
   citySel.addEventListener('change', ()=>{
     const nextCity = citySel.value;
-  
-    // always reset filters for the city we're switching to
-    modelSelections.delete(nextCity);   // forget any previous custom set
-    modelOptions.delete(nextCity);      // force rebuilding of the checkbox list
-    lastUIChange = 0;                   // ensure buildModelPanelIfNeeded will run
-  
+
+    modelSelections.delete(nextCity);  // forget any previous custom set for the target city
+    modelOptions.delete(nextCity);     // force re-build of the checkbox list
+    lastUIChange = 0;
+
     currentCity = nextCity;
-  
-    // update URL and clear current markers while loading
+
     const cfg = centers[currentCity] || centers.krakow;
-    const p = new URLSearchParams(location.search);
-    p.set('city', currentCity);
+    const p = new URLSearchParams(location.search); p.set('city', currentCity);
     history.replaceState(null,'',`?${p.toString()}`);
-  
+
     clearTimeout(timer);
     map.getSource('cars')?.setData(emptyFC());
     setCount(0);
-  
+
     map.easeTo({ center: cfg, zoom: cfg.z });
-    loadAll(true, { fit:true });  // will rebuild filters to "all checked" for this city
+    loadAll(true, { fit:true });  // rebuilds filters to "all checked"
   });
+
   refreshBtn.addEventListener('click',()=>loadAll(false,{fit:false}));
 
+  // overlays
   relCB.addEventListener('change',e=>toggleLayer('relocation',e.target.checked));
   nopCB.addEventListener('change',e=>toggleLayer('nopark',e.target.checked));
   ogCB .addEventListener('change',e=>toggleLayer('ogarniam',e.target.checked));
@@ -362,6 +359,9 @@
     }catch(e){}
     clearTimeout(timer); timer=setTimeout(()=>loadAll(false,{fit:false}),20000);
   }
+
+  // tiny utils
+  const emptyFC=()=>({type:'FeatureCollection',features:[]});
 })();
 </script>
 </body>
