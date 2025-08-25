@@ -1,15 +1,17 @@
+// netlify/functions/traficar-auto.js
 // Traficar proxy — city-only, AVAILABLE ONLY, wide soft→strict discovery + KNOWN_ZONES.
-// First call without zones: soft (learn zones even if nothing is free) → strict (available-only).
-// When zones are known (KNOWN_ZONES, warm cache, or ?zones=...), it runs fast and returns [cars].
-// Add &includeZones=1 to always get {cars, zones} for debugging in the browser.
+// - Returns model names (joins /api/v1/car-models) and a "kind" field: car | van | scooter.
+// - First call without zones: soft (learn zones even if no free cars) → strict (available-only).
+// - When zones are known (KNOWN_ZONES, warm cache, or ?zones=...), it runs fast and returns [cars].
+// - Add &includeZones=1 to always get {cars, zones} in your browser.
 
-let CITY_STATE = Object.create(null); // warm cache per instance
+let CITY_STATE = Object.create(null); // warm cache per function instance
 
 export async function handler(event) {
   const origin = 'https://fioletowe.live';
   const q = event.queryStringParameters || {};
   const cityKey = (q.city || '').toLowerCase().trim();
-  if (!cityKey) return json({ error: 'missing city' }, 400);
+  if (!cityKey) return j({ error: 'missing city' }, 400);
 
   // City centres + strict radii (km)
   const CITY = {
@@ -32,7 +34,7 @@ export async function handler(event) {
     warszawa: 100, wroclaw: 90, poznan: 90, krakow: 90, lublin: 90, lodz: 90, szczecin: 90, rzeszow: 90
   };
 
-  // 🔒 Fill these as you learn them to make cities instant
+  // 🔒 KNOWN_ZONES — fill once, loads become instant.
   const KNOWN_ZONES = {
     krakow:    [1, 6],
     warszawa:  [2, 5],
@@ -52,10 +54,10 @@ export async function handler(event) {
     .map(s => Number(s.trim()))
     .filter(n => Number.isFinite(n) && n > 0);
 
-  // Warm per-city state
+  // Warm per-city state (persists while instance stays warm)
   const S = CITY_STATE[cityKey] ||= { zones: [], zonesTs: 0 };
 
-  // Pick zones in priority: KNOWN_ZONES → querystring → warm cache
+  // Prefer zones in this order: KNOWN_ZONES → ?zones= → warm cache
   let zones = null;
   if (KNOWN_ZONES[cityKey]?.length) zones = KNOWN_ZONES[cityKey];
   else if (zonesFromQS.length)       zones = zonesFromQS;
@@ -64,7 +66,7 @@ export async function handler(event) {
   const headers = { accept: 'application/json', 'user-agent': 'Mozilla/5.0', referer: `${origin}/` };
 
   // ---------- utils ----------
-  function json(body, status=200){
+  function j(body, status=200){
     return { statusCode: status, headers: {
       'content-type':'application/json','cache-control':'no-store','access-control-allow-origin':'*'
     }, body: JSON.stringify(body) };
@@ -74,12 +76,12 @@ export async function handler(event) {
   const toRad = d => d*Math.PI/180;
   const distKm = (a,b)=>{ const R=6371, dLat=toRad(b[0]-a[0]), dLon=toRad(b[1]-a[1]);
     const A=Math.sin(dLat/2)**2 + Math.cos(toRad(a[0]))*Math.cos(toRad(b[0]))*Math.sin(dLon/2)**2;
-    return R*2*Math.atan2(Math.sqrt(A), Math.sqrt(1-A));
+    return R * 2 * Math.atan2(Math.sqrt(A), Math.sqrt(1-A));
   };
   const insideStrict = (lat,lng) => distKm(city.c, [lat,lng]) <= city.r;
   const insideSoft = (lat,lng) => {
     const min = SOFT_MIN[cityKey] || 90;
-    const softR = Math.max(city.r * 2.2, min); // bigger net for discovery
+    const softR = Math.max(city.r * 2.2, min);
     return distKm(city.c, [lat,lng]) <= softR;
   };
 
@@ -90,7 +92,7 @@ export async function handler(event) {
       const r = await fetch(url, { headers, signal: ctrl.signal });
       if (!r.ok) return null;
       const ct = r.headers.get('content-type')||'';
-      if (!/json/i.test(ct)) return null;
+      if (!/json|geojson/i.test(ct)) return null;
       return await r.json();
     }catch{ return null; } finally { clearTimeout(t); }
   }
@@ -108,7 +110,7 @@ export async function handler(event) {
     return null;
   }
 
-  // ---------- model names ----------
+  // ---------- model names (+ type -> kind) ----------
   const modelById = new Map();
   try{
     const md = await fetchJSON(`${origin}/api/v1/car-models`, 3200);
@@ -118,7 +120,8 @@ export async function handler(event) {
       if (id!=null) modelById.set(Number(id), {
         name: m.name || m.model || 'Vehicle',
         electric: !!m.electric,
-        maxFuel: (typeof m.maxFuel==='number'?m.maxFuel:null)
+        maxFuel: (typeof m.maxFuel==='number'?m.maxFuel:null),
+        type: m.type // 1=car, 2=van, 6=scooter (based on API)
       });
     }
   }catch{}
@@ -126,7 +129,13 @@ export async function handler(event) {
   const modelFrom = (item)=>{
     const id = item.modelId ?? item.carModelId ?? item.model?.id ?? item.carModel?.id;
     if (id!=null && modelById.has(Number(id))) return modelById.get(Number(id));
-    return { name: item.modelName || item.name || item.model || 'Vehicle', electric: !!(item.electric ?? item.isElectric), maxFuel: null };
+    // fallback guess
+    const name = item.modelName || item.name || item.model || 'Vehicle';
+    const guessType =
+      item.type ?? item.vehicleType ??
+      (/\b(master|dokker|express)\b/i.test(String(name)) ? 2 :
+       /\b(zoe|spring|navee|scoot|hulajnoga)\b/i.test(String(name)) ? 6 : 1);
+    return { name, electric: !!(item.electric ?? item.isElectric), maxFuel: null, type: guessType };
   };
 
   // ---------- availability ----------
@@ -182,10 +191,15 @@ export async function handler(event) {
       if (mode === 'soft'   && !isFree_SOFT(f))   continue;
 
       const meta = modelFrom(item);
+      const kind = (meta.type === 2) ? 'van' : (meta.type === 6 ? 'scooter' : 'car');
+
       out.push({
         id: item.id ?? item.vehicleId ?? item.carId ?? item.code ?? null,
         lat, lng,
-        model: meta.name, isElectric: !!meta.electric, maxFuel: meta.maxFuel,
+        model: meta.name,
+        isElectric: !!meta.electric,
+        maxFuel: meta.maxFuel,
+        kind, // car | van | scooter  ← used by cluster pies + filters
         plate: f.plate, number: f.number, pct: f.pct, rangeKm: f.rangeKm, address: f.address
       });
     }
@@ -193,7 +207,7 @@ export async function handler(event) {
   }
 
   async function runZones(ids, mode='strict'){
-    const limit = 14; // high but polite concurrency
+    const limit = 14; // decent concurrency
     let idx = 0;
     const cars = [];
     const used = new Set();
@@ -217,20 +231,21 @@ export async function handler(event) {
   }
 
   async function discoverZonesSoftThenStrict(){
-    // Try across 1..600 with soft filter so we ALWAYS learn zones (even if no free cars)
+    // Try across 1..600 with soft filter so we ALWAYS learn zones
     const RANGE = Array.from({ length: 600 }, (_, i) => i + 1);
-    const batches = [RANGE.slice(0,100), RANGE.slice(100,200), RANGE.slice(200,300), RANGE.slice(300,400), RANGE.slice(400,500), RANGE.slice(500,600)];
+    const batches = [RANGE.slice(0,100), RANGE.slice(100,200), RANGE.slice(200,300),
+                     RANGE.slice(300,400), RANGE.slice(400,500), RANGE.slice(500,600)];
     const zonesSet = new Set();
 
     for (const batch of batches){
       const { zones } = await runZones(batch, 'soft');
       zones.forEach(z => zonesSet.add(z));
-      if (zonesSet.size >= 30) break; // enough zones learned
+      if (zonesSet.size >= 30) break; // enough learned
     }
     const learned = Array.from(zonesSet);
     if (!learned.length) return { cars: [], zones: [] };
 
-    // Now fetch those zones strictly
+    // Now fetch those zones strictly (available-only)
     const { cars } = await runZones(learned, 'strict');
     return { cars, zones: learned };
   }
@@ -239,14 +254,14 @@ export async function handler(event) {
 
   // ---------- main ----------
   if (zones && zones.length){
-    const { cars } = await runZones(zones, 'strict');             // fast path
-    if (includeZones) return json({ cars, zones });
-    return json(cars);
+    const { cars } = await runZones(zones, 'strict'); // fast path
+    if (includeZones) return j({ cars, zones });
+    return j(cars);
   }
 
-  // No zones known: discover (soft→strict) so we *always* learn zones
+  // No zones known: discover (soft→strict) so we *always* learn a zone list
   const disc = await discoverZonesSoftThenStrict();
   if (disc.zones.length){ S.zones = disc.zones; S.zonesTs = Date.now(); }
 
-  return json(includeZones ? disc : { cars: disc.cars, zones: disc.zones });
+  return j(includeZones ? disc : { cars: disc.cars, zones: disc.zones });
 }
