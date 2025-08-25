@@ -309,16 +309,28 @@
     noteUI(); applyFilterAndRender({fit:false});
   });
 
-  citySel.addEventListener('change',()=>{
-    currentCity=citySel.value;
-    const cfg=centers[currentCity]||centers.krakow;
-    const p=new URLSearchParams(location.search); p.set('city',currentCity);
+  citySel.addEventListener('change', ()=>{
+    const nextCity = citySel.value;
+  
+    // always reset filters for the city we're switching to
+    modelSelections.delete(nextCity);   // forget any previous custom set
+    modelOptions.delete(nextCity);      // force rebuilding of the checkbox list
+    lastUIChange = 0;                   // ensure buildModelPanelIfNeeded will run
+  
+    currentCity = nextCity;
+  
+    // update URL and clear current markers while loading
+    const cfg = centers[currentCity] || centers.krakow;
+    const p = new URLSearchParams(location.search);
+    p.set('city', currentCity);
     history.replaceState(null,'',`?${p.toString()}`);
+  
     clearTimeout(timer);
     map.getSource('cars')?.setData(emptyFC());
     setCount(0);
-    map.easeTo({center:cfg,zoom:cfg.z});
-    loadAll(true,{fit:true});
+  
+    map.easeTo({ center: cfg, zoom: cfg.z });
+    loadAll(true, { fit:true });  // will rebuild filters to "all checked" for this city
   });
   refreshBtn.addEventListener('click',()=>loadAll(false,{fit:false}));
 
