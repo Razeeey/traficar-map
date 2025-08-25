@@ -88,7 +88,7 @@
 
 <script>
 (function(){
-  const MAPTILER_KEY = 'YOUR_MAPTILER_KEY';
+  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC';
   const API_CARS = '/.netlify/functions/traficar-auto';
   const API_AREAS = '/.netlify/functions/traficar-areas';
 
@@ -119,7 +119,7 @@
   // map
   const map = new maplibregl.Map({
     container:'map',
-    style:`https://api.maptiler.com/maps/dataviz-dark/style.json?key=${om295piVB9WpF6hwX1iC}`,
+    style:`https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
     center: centers[initialCity],
     zoom: centers[initialCity].z,
     attributionControl:true
