@@ -38,12 +38,12 @@ export async function handler(event) {
     warszawa:  [2, 5],
     wroclaw:   [3],
     poznan:    [4],
-    trojmiasto:[],
+    trojmiasto:[5],
     slask:     [6],
     lublin:    [8],
-    lodz:      [],
+    lodz:      [9],
     szczecin:  [10],
-    rzeszow:   []
+    rzeszow:   [11]
   };
 
   const includeZones = q.includeZones === '1';
