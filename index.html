@@ -30,27 +30,31 @@
   .spacer{flex:1}
   .count{background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
 
+  /* right filter panel (compact like your screenshot) */
   .panel{
     position:fixed; right:12px; top:64px; z-index:11;
     background:rgba(23,23,28,.92); backdrop-filter: blur(8px);
     border:1px solid rgba(255,255,255,.08); border-radius:12px;
-    padding:10px 12px; width:220px; box-shadow:var(--shadow);
+    padding:12px; width:240px; box-shadow:var(--shadow);
   }
-  .panel h4{margin:6px 0 8px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
-  .panel label{display:flex; align-items:center; gap:8px; margin:6px 0; font-size:14px}
-  .panel input[type="checkbox"]{width:16px; height:16px; cursor:pointer}
-  .chip{display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:#22222a; border:1px solid rgba(255,255,255,.06); color:#bfc0ca}
+  .panel h4{margin:8px 0 6px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
+  .panel .row{display:flex; align-items:center; gap:8px; margin:6px 0; font-size:14px}
+  .panel input[type="checkbox"]{width:18px; height:18px; cursor:pointer; accent-color:#7b4bff}
+  .panel .small{display:flex; gap:10px; margin-top:4px;}
+  .panel .small a{font-size:12px; color:#bfc0ca; text-decoration:underline; cursor:pointer}
 
-  .badge{background:#7b4bff;color:#fff;padding:4px 8px;border-radius:10px;font-weight:800;display:inline-block;min-width:46px;text-align:center}
+  .badge{background:#7b4bff;color:#fff;padding:4px 10px;border-radius:10px;font-weight:800;display:inline-block;min-width:52px;text-align:center}
   .muted{color:var(--muted)}
-  .infocard{min-width:280px;max-width:320px}
+  .infocard{min-width:300px;max-width:340px}
+  .carimg{width:100%; height:120px; object-fit:cover; border-radius:9px; background:#1d1d22; margin-bottom:8px; display:block}
+  .title{font-weight:800; font-size:16px}
 </style>
 </head>
 <body>
 <div id="map"></div>
 
 <div class="topbar">
-  <div class="brand">Traficar</div>
+  <div class="brand">🚗 TrafiCar</div>
   <label><span class="muted" style="font-size:.85rem;margin-right:6px">City</span>
     <select id="city">
       <option value="krakow">Kraków</option>
@@ -70,6 +74,7 @@
   <div id="count" class="count">0 cars</div>
 </div>
 
+<!-- Right filter panel -->
 <div class="panel" id="filters">
   <h4>Osobowe</h4>
   <div id="models-cars"></div>
@@ -77,19 +82,34 @@
   <div id="models-vans"></div>
   <h4>Mikromobilność</h4>
   <div id="models-scooters"></div>
-  <hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:8px 0">
+  <div class="small"><a id="all">Zaznacz wszystko</a><a id="none">Wyczyść</a></div>
+  <hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:10px 0">
   <h4>Strefy</h4>
-  <label><input type="checkbox" id="toggle-rel" checked> Relokacja <span class="chip">żółta</span></label>
-  <label><input type="checkbox" id="toggle-nop" checked> Zakaz parkowania <span class="chip">czerwona</span></label>
-  <label><input type="checkbox" id="toggle-og" checked> Ogarniam <span class="chip">fiolet</span></label>
+  <div class="row"><input type="checkbox" id="toggle-rel" checked><label for="toggle-rel">Relokacja</label></div>
+  <div class="row"><input type="checkbox" id="toggle-nop" checked><label for="toggle-nop">Zakaz parkowania</label></div>
+  <div class="row"><input type="checkbox" id="toggle-og" checked><label for="toggle-og">Ogarniam</label></div>
 </div>
 
 <script>
 (function(){
-  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // ← put your key in quotes
+  // Put your MapTiler key here (IN QUOTES)
+  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC';
 
   const API_CARS  = '/.netlify/functions/traficar-auto';
   const API_AREAS = '/.netlify/functions/traficar-areas';
+
+  // Optional: per-model photo lookup (drop files into /img/ with these names)
+  function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
+  function modelImage(model, kind){
+    const file = `/img/${slug(model)}.jpg`;
+    // we can't pre-check file existence cheaply; set it and let onerror swap to silhouette
+    const fallback = {
+      car: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><path d="M70 210h500a20 20 0 0 0 20-20v-25c0-10-5-20-14-26l-55-35c-8-5-17-8-27-8H227l-45-40c-8-7-19-11-30-11H95c-12 0-22 7-26 18l-20 54c-3 8-10 13-18 13H20v60h30a35 35 0 0 0 70 0h330a35 35 0 0 0 70 0h30v-10H70v10z"/></g></svg>',
+      van: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><path d="M60 210h520c11 0 20-9 20-20v-60c0-6-3-12-8-16l-80-60c-4-3-9-4-14-4H180c-17 0-30 13-30 30v20H60v110z"/></g></svg>',
+      scooter: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="100%" height="100%" fill="%231d1d22"/><g fill="%23999"><circle cx="150" cy="210" r="35"/><circle cx="480" cy="210" r="35"/><path d="M190 210h220l-40-110h-40l32 88H200zM360 100h40l-10-40h-40z"/></g></svg>'
+    }[kind||'car'];
+    return { src: file, fallback };
+  }
 
   const centers = {
     krakow:{lng:19.9383,lat:50.0614,z:13}, warszawa:{lng:21.0122,lat:52.2297,z:12},
@@ -105,13 +125,18 @@
   const citySel = document.getElementById('city');
   const refreshBtn = document.getElementById('refresh');
   const countEl = document.getElementById('count');
+  const relCB = document.getElementById('toggle-rel');
+  const nopCB = document.getElementById('toggle-nop');
+  const ogCB  = document.getElementById('toggle-og');
+  const allBtn = document.getElementById('all');
+  const noneBtn= document.getElementById('none');
 
   citySel.value = initialCity;
   let currentCity = citySel.value;
 
-  // Per-city selection: Set(modelName). Empty set = show NONE.
-  const modelSelections = new Map();
-  const modelOptions    = new Map();
+  // Per-city selection set (empty = show NONE)
+  const modelSelections = new Map(); // city -> Set(model)
+  const modelOptions    = new Map(); // city -> {car:[],van:[],scooter:[]}
 
   // Map
   const map = new maplibregl.Map({
@@ -124,7 +149,7 @@
   map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
   map.on('load', async () => {
-    // Data source with cluster category counters
+    // cars source with cluster counters
     map.addSource('cars', {
       type:'geojson',
       data: emptyFC(),
@@ -136,50 +161,44 @@
       }
     });
 
-    // --- PIE ICON GENERATORS (register BEFORE adding the symbol layer) ---
+    // PIE ICON generation (ImageData → works everywhere)
     const PIE_CACHE = new Set();
     map.on('styleimagemissing', (e) => {
       const m = /^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id);
       if (!m || PIE_CACHE.has(e.id)) return;
       try {
-        map.addImage(e.id, makePie(+m[1], +m[2], +m[3]), { pixelRatio:2 });
+        map.addImage(e.id, pieImageData(+m[1], +m[2], +m[3]), { pixelRatio:2 });
         PIE_CACHE.add(e.id);
         map.triggerRepaint();
       } catch {}
     });
-    map.on('idle', () => { // fallback sweep
+    map.on('idle', () => {
       const feats = map.queryRenderedFeatures({ layers:['clusters-pie'] });
       for (const f of feats) {
         const id = `pie_${f.properties.car|0}_${f.properties.van|0}_${f.properties.scooter|0}`;
         if (!map.hasImage(id)) {
-          try { map.addImage(id, makePie(f.properties.car|0, f.properties.van|0, f.properties.scooter|0), { pixelRatio:2 }); } catch {}
+          try { map.addImage(id, pieImageData(f.properties.car|0, f.properties.van|0, f.properties.scooter|0), { pixelRatio:2 }); } catch {}
         }
       }
     });
 
-    // Background circle so clusters are always visible
+    // background circle so clusters are visible instantly
     map.addLayer({
       id:'clusters-bg', type:'circle', source:'cars', filter:['has','point_count'],
       paint:{
         'circle-color':'#3e3e45',
         'circle-stroke-color':'#111',
         'circle-stroke-width':2,
-        'circle-radius':[
-          'interpolate', ['linear'], ['get','point_count'],
-          2, 14, 50, 18, 200, 24, 500, 28
-        ]
+        'circle-radius':['interpolate', ['linear'], ['get','point_count'], 2, 14, 50, 18, 200, 24, 500, 28]
       }
     });
 
-    // Pie icon + number on top
+    // pie icon + number
     map.addLayer({
       id:'clusters-pie', type:'symbol', source:'cars', filter:['has','point_count'],
       layout:{
         'icon-image': ['concat','pie_', ['to-string',['coalesce',['get','car'],0]], '_', ['to-string',['coalesce',['get','van'],0]], '_', ['to-string',['coalesce',['get','scooter'],0]]],
-        'icon-size': [
-          'interpolate', ['linear'], ['get','point_count'],
-          2, 0.8, 50, 1.0, 200, 1.25, 500, 1.5
-        ],
+        'icon-size': ['interpolate', ['linear'], ['get','point_count'], 2, 0.85, 50, 1.0, 200, 1.25, 500, 1.5],
         'icon-allow-overlap': true,
         'text-field': ['get','point_count_abbreviated'],
         'text-size': 12,
@@ -190,24 +209,16 @@
       paint:{ 'text-color':'#ffffff', 'text-halo-color':'#111', 'text-halo-width':1.2 }
     });
 
-    // Unclustered points
+    // unclustered points
     map.addLayer({
       id:'unclustered', type:'circle', source:'cars', filter:['!',['has','point_count']],
       paint:{
-        'circle-color':[
-          'case',
-            ['!', ['has','pct']], '#8e8e93',
-            ['>=', ['get','pct'], 50], '#3ddc84',
-            ['>=', ['get','pct'], 20], '#ffb020',
-            '#ff6b6b'
-        ],
-        'circle-stroke-color':'#111',
-        'circle-stroke-width':2,
-        'circle-radius':8
+        'circle-color':[ 'case', ['!', ['has','pct']], '#8e8e93', ['>=', ['get','pct'], 50], '#3ddc84', ['>=', ['get','pct'], 20], '#ffb020', '#ff6b6b' ],
+        'circle-stroke-color':'#111','circle-stroke-width':2,'circle-radius':8
       }
     });
 
-    // Overlays
+    // overlays
     map.addSource('zones-relocation', { type:'geojson', data: emptyFC() });
     map.addSource('zones-nopark',     { type:'geojson', data: emptyFC() });
     map.addSource('zones-ogarniam',   { type:'geojson', data: emptyFC() });
@@ -218,21 +229,25 @@
     map.addLayer({ id:'ogarniam-fill', type:'fill', source:'zones-ogarniam', paint:{ 'fill-color':'#a56cff', 'fill-opacity':0.16 }});
     map.addLayer({ id:'ogarniam-outline', type:'line', source:'zones-ogarniam', paint:{ 'line-color':'#a56cff', 'line-width':2 }});
 
-    // Popup
+    // popup with image on top
     map.on('click','unclustered', (e)=>{
       const v = e.features[0].properties;
       const [lng,lat] = e.features[0].geometry.coordinates;
+
       const badge = v.number ? v.number : (v.id ? String(v.id).slice(-4) : '');
       const plate = v.plate || '';
       const pct = (v.pct!=null) ? `${v.pct}%` : '—';
       const range = (v.rangeKm!=null) ? ` (${v.rangeKm} km)` : '';
       const addr = v.address || '';
       const apple = `https://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(v.model || 'Car')}`;
+
+      const img = modelImage(v.model, v.kind);
       const html = `
         <div class="infocard">
+          <img class="carimg" src="${img.src}" onerror="this.src='${img.fallback}'" alt="${v.model||'Vehicle'}"/>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
             <span class="badge">${badge}</span>
-            <div style="font-weight:800">${v.model || 'Vehicle'}</div>
+            <div class="title">${v.model || 'Vehicle'}</div>
           </div>
           <div class="muted" style="margin:-2px 0 8px">${plate || '&nbsp;'}</div>
           <div class="muted" style="margin:6px 0">⛽ <b>${pct}${range}</b></div>
@@ -243,32 +258,37 @@
       new maplibregl.Popup({ closeButton:true, offset:12 }).setLngLat([lng,lat]).setHTML(html).addTo(map);
     });
 
-    // First load
     await loadAll(true, { fit:true });
   });
 
-  // Pie drawing
-  function makePie(c,v,s){
-    const size = 64, r = size/2;
+  // Generate cluster pie as ImageData (safer than canvas element in some engines)
+  function pieImageData(c,v,s){
+    const size = 64*2; // retina
+    const r = size/2;
     const cvs = document.createElement('canvas'); cvs.width=size; cvs.height=size;
     const g = cvs.getContext('2d');
-    g.beginPath(); g.arc(r,r,r-2,0,Math.PI*2); g.fillStyle='#3e3e45'; g.fill();
+    // base ring
+    g.beginPath(); g.arc(r,r,r-4,0,Math.PI*2); g.fillStyle='#3e3e45'; g.fill();
+
     const total = Math.max(1, c+v+s);
     let start = -Math.PI/2;
     const slice = (val,color)=>{
       const ang = (val/total)*Math.PI*2;
-      g.beginPath(); g.moveTo(r,r); g.arc(r,r,r-4,start,start+ang,false); g.closePath();
+      g.beginPath(); g.moveTo(r,r); g.arc(r,r,r-8,start,start+ang,false); g.closePath();
       g.fillStyle=color; g.fill(); start+=ang;
     };
     slice(c,'#7b4bff'); // cars
     slice(v,'#1d4ed8'); // vans
     slice(s,'#2dd4bf'); // scooters
-    g.beginPath(); g.arc(r,r,r-18,0,Math.PI*2); g.fillStyle='#121218'; g.fill();
-    g.beginPath(); g.arc(r,r,r-1,0,Math.PI*2); g.strokeStyle='#111'; g.lineWidth=2; g.stroke();
-    return cvs;
+
+    // inner disk + border
+    g.beginPath(); g.arc(r,r,r-28,0,Math.PI*2); g.fillStyle='#121218'; g.fill();
+    g.beginPath(); g.arc(r,r,r-3,0,Math.PI*2); g.strokeStyle='#111'; g.lineWidth=4; g.stroke();
+
+    return g.getImageData(0,0,size,size);
   }
 
-  // ---------- state / helpers ----------
+  // ---------- state/helpers ----------
   let timer = null;
   window.__CITY_CACHE = { cars: [] };
 
@@ -307,17 +327,33 @@
     }
   }
 
-  // Build model checklist (preserves prior selection; default = all checked)
-  function buildModelPanel(grouped){
-    modelOptions.set(currentCity, grouped);
-    const all = [...(grouped.car||[]), ...(grouped.van||[]), ...(grouped.scooter||[])];
+  // Build/refresh the checklist — ONLY when needed
+  function modelsEqual(a,b){
+    const ax = (a||[]).slice().sort().join('|');
+    const bx = (b||[]).slice().sort().join('|');
+    return ax===bx;
+  }
+  function buildModelPanelIfNeeded(grouped){
+    const prev = modelOptions.get(currentCity);
+    const needsBuild = !prev ||
+      !modelsEqual(prev.car, grouped.car) ||
+      !modelsEqual(prev.van, grouped.van) ||
+      !modelsEqual(prev.scooter, grouped.scooter);
 
+    if (!needsBuild) return; // keep current checkboxes untouched
+
+    modelOptions.set(currentCity, grouped);
+
+    // init selection for this city ONCE to "all checked"
     if (!modelSelections.has(currentCity)) {
-      modelSelections.set(currentCity, new Set(all)); // default: ALL checked
+      modelSelections.set(currentCity, new Set([...(grouped.car||[]), ...(grouped.van||[]), ...(grouped.scooter||[])]));
     } else {
+      // keep user choices; add any new models as checked; remove missing
       const set = modelSelections.get(currentCity);
-      for (const name of all) set.add(name);                 // add any new models (checked)
-      for (const name of Array.from(set)) if (!all.includes(name)) set.delete(name); // drop missing
+      for (const name of [...(grouped.car||[]), ...(grouped.van||[]), ...(grouped.scooter||[])]) set.add(name);
+      for (const name of Array.from(set)) {
+        if (![...(grouped.car||[]), ...(grouped.van||[]), ...(grouped.scooter||[])].includes(name)) set.delete(name);
+      }
     }
 
     const carsDiv = document.getElementById('models-cars');
@@ -326,24 +362,40 @@
 
     function fill(el, arr){
       el.innerHTML = '';
-      arr.sort((a,b)=>a.localeCompare(b,'pl')).forEach(name=>{
+      (arr||[]).sort((a,b)=>a.localeCompare(b,'pl')).forEach(name=>{
         const id = `${currentCity}-mdl-${name.replace(/\W+/g,'-')}`;
-        const wrap = document.createElement('label');
-        wrap.innerHTML = `<input type="checkbox" id="${id}"> ${name}`;
-        const cb = wrap.querySelector('input');
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML = `<input type="checkbox" id="${id}"><label for="${id}">${name}</label>`;
+        const cb = row.querySelector('input');
         cb.checked = modelSelections.get(currentCity).has(name);
         cb.addEventListener('change', ()=>{
           const set = modelSelections.get(currentCity);
           if (cb.checked) set.add(name); else set.delete(name);
           applyFilterAndRender({fit:false});
         });
-        el.appendChild(wrap);
+        el.appendChild(row);
       });
     }
-    fill(carsDiv, grouped.car||[]);
-    fill(vansDiv, grouped.van||[]);
-    fill(scootDiv, grouped.scooter||[]);
+    fill(carsDiv, grouped.car);
+    fill(vansDiv, grouped.van);
+    fill(scootDiv, grouped.scooter);
   }
+
+  // Select all / none
+  allBtn.addEventListener('click', ()=>{
+    const opts = modelOptions.get(currentCity) || {car:[],van:[],scooter:[]};
+    modelSelections.set(currentCity, new Set([...(opts.car||[]), ...(opts.van||[]), ...(opts.scooter||[])]));
+    buildModelPanelIfNeeded(opts); // ensures checkboxes reflect the set
+    // Manually tick all visible boxes
+    document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb => cb.checked = true);
+    applyFilterAndRender({fit:false});
+  });
+  noneBtn.addEventListener('click', ()=>{
+    modelSelections.set(currentCity, new Set()); // empty => show none
+    document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb => cb.checked = false);
+    applyFilterAndRender({fit:false});
+  });
 
   // UI
   citySel.addEventListener('change', ()=>{
@@ -360,16 +412,17 @@
   refreshBtn.addEventListener('click', ()=> loadAll(false, { fit:false }));
 
   // overlays toggles
-  ['relocation','nopark','ogarniam'].forEach(key=>{
-    const idFill = `${key}-fill`, idLine = `${key}-outline`;
-    document.getElementById(`toggle-${key==='nopark'?'nop':'og'===key?'og':'rel'}`)
-      ?.addEventListener('change', (e)=>{
-        const v = e.target.checked ? 'visible' : 'none';
-        map.setLayoutProperty(idFill, 'visibility', v);
-        map.setLayoutProperty(idLine, 'visibility', v);
-      });
-  });
+  relCB.addEventListener('change', (e)=> toggleLayer('relocation', e.target.checked));
+  nopCB.addEventListener('change', (e)=> toggleLayer('nopark', e.target.checked));
+  ogCB .addEventListener('change', (e)=> toggleLayer('ogarniam', e.target.checked));
+  function toggleLayer(key, on){
+    const v = on ? 'visible' : 'none';
+    map.setLayoutProperty(`${key}-fill`,'visibility',v);
+    map.setLayoutProperty(`${key}-outline`,'visibility',v);
+  }
 
+  // load everything
+  window.__CITY_CACHE = { cars: [] };
   async function loadAll(first=false, {fit=false}={}){
     try{
       const qs = new URLSearchParams({ city: currentCity });
@@ -388,17 +441,15 @@
         localStorage.setItem(`traficar_zones_${currentCity}`, JSON.stringify({ zones, ts: Date.now() }));
       }
 
-      // options for the panel
       const byKind = { car:new Set(), van:new Set(), scooter:new Set() };
       for (const v of cars) if (v && v.model) (byKind[v.kind||'car']||byKind.car).add(v.model);
       const grouped = { car:[...byKind.car], van:[...byKind.van], scooter:[...byKind.scooter] };
-      buildModelPanel(grouped);
 
+      buildModelPanelIfNeeded(grouped); // only rebuild if models changed
       window.__CITY_CACHE.cars = cars;
-      applyFilterAndRender({fit});
+      applyFilterAndRender({fit}); // keep map position on filter changes
     }catch(e){ console.error(e); }
 
-    // areas
     try{
       const res = await fetch(`${API_AREAS}?city=${encodeURIComponent(currentCity)}`);
       const areas = await res.json();
