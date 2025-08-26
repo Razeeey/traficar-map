@@ -32,8 +32,13 @@
   .chip svg{display:block}
 
   /* filter panel (popup style, no overlay) */
-  .panel{position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;width:240px;box-shadow:var(--shadow);max-height:70vh;overflow:auto}
+  .panel{position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;width:260px;box-shadow:var(--shadow);max-height:70vh;overflow:auto}
   .panel.hidden{display:none}
+  /* header inside panel with close X */
+  .panel-header{position:sticky;top:-12px;margin:-12px -12px 8px;background:rgba(23,23,28,.92);padding:12px;border-bottom:1px solid rgba(255,255,255,.08);border-top-left-radius:12px;border-top-right-radius:12px;display:flex;align-items:center;justify-content:space-between}
+  .panel-title{font-weight:800;letter-spacing:.02em}
+  .closebtn{width:32px;height:32px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#e8e9f1;display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;cursor:pointer}
+  .closebtn:hover{border-color:rgba(255,255,255,.3)}
   .panel h4{margin:8px 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
   .row{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:14px}
   .panel input[type="checkbox"]{width:18px;height:18px;cursor:pointer;accent-color:#7b4bff}
@@ -95,6 +100,11 @@
 
 <!-- Filter panel (hidden by default) -->
 <div id="filtersPanel" class="panel hidden">
+  <div class="panel-header">
+    <div class="panel-title">Filtry</div>
+    <button id="closeFilters" class="closebtn" aria-label="Zamknij">×</button>
+  </div>
+
   <h4>Osobowe</h4>
   <div id="models-cars"></div>
   <h4>Dostawcze</h4>
@@ -133,6 +143,7 @@
   const countEl = document.getElementById('count');
   const filterBtn = document.getElementById('filterBtn');
   const panelEl   = document.getElementById('filtersPanel');
+  const closeBtn  = document.getElementById('closeFilters');
 
   const allBtn = document.getElementById('all');
   const noneBtn= document.getElementById('none');
@@ -146,12 +157,13 @@
   function openFilters(){ panelEl.classList.remove('hidden'); filterBtn.setAttribute('aria-expanded','true'); }
   function closeFilters(){ panelEl.classList.add('hidden');  filterBtn.setAttribute('aria-expanded','false'); }
   filterBtn.addEventListener('click', ()=>{ panelEl.classList.contains('hidden') ? openFilters() : closeFilters(); });
+  closeBtn.addEventListener('click', closeFilters);
   window.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeFilters(); });
 
   citySel.value = initialCity;
   let currentCity = citySel.value;
 
-  // selections & model options (single declarations)
+  // selections & model options
   const modelSelections = new Map();
   const modelOptions    = new Map();
   let lastUIChange = 0;
