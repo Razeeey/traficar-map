@@ -179,6 +179,7 @@
   const params = new URLSearchParams(location.search);
   const initialCity = centers[params.get('city')] ? params.get('city') : 'krakow';
 
+  /* DOM */
   const citySel   = document.getElementById('city');
   const refreshBtn= document.getElementById('refresh');
   const spinEl    = document.getElementById('spin');
@@ -224,15 +225,15 @@
     document.body.appendChild(probe);
     const w = probe.getBoundingClientRect().width;
     document.body.removeChild(probe);
-    const pad = 52 /*left icon*/ + 28 /*right arrow/pad*/;
+    const pad = 52 /*left icon*/ + 28 /*arrow*/;
     const min = 120, max = matchMedia('(max-width:700px)').matches ? 200 : 220;
     citySel.style.width = Math.min(max, Math.max(min, Math.ceil(w + pad))) + 'px';
   }
 
+  /* selections + options (single declaration) */
   const modelSelections = new Map();
   const modelOptions    = new Map();
   let lastUIChange = 0;
-  const noteUI = ()=>{ lastUIChange = Date.now(); };
 
   function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
   const CUSTOM_FILE_BY_MODEL = {
@@ -395,23 +396,27 @@
       }
     });
 
-    // overlays (fill source creation left out for brevity – same as before)
+    /* overlays for zones (kept) */
     map.addSource('zones-relocation',{type:'geojson',data:emptyFC()});
     map.addSource('zones-nopark',{type:'geojson',data:emptyFC()});
     map.addSource('zones-ogarniam',{type:'geojson',data:emptyFC()});
+    map.addLayer({id:'relocation-fill',type:'fill',source:'zones-relocation',paint:{'fill-color':'#ffd500','fill-opacity':0.22}});
+    map.addLayer({id:'relocation-outline',type:'line',source:'zones-relocation',paint:{'line-color':'#ffd500','line-width':2}});
+    map.addLayer({id:'nopark-fill',type:'fill',source:'zones-nopark',paint:{'fill-color':'#ff4d4d','fill-opacity':0.28}});
+    map.addLayer({id:'nopark-outline',type:'line',source:'zones-nopark',paint:{'line-color':'#ff4d4d','line-width':1.5,'line-dasharray':[2,2]}});
+    map.addLayer({id:'ogarniam-fill',type:'fill',source:'zones-ogarniam',paint:{'fill-color':'#a56cff','fill-opacity':0.16}});
+    map.addLayer({id:'ogarniam-outline',type:'line',source:'zones-ogarniam',paint:{'line-color':'#a56cff','line-width':2}});
 
-    // pointer cursor + hover label: detect feature under cursor always
+    // pointer cursor + hover label
     function updateHover(e){
       const feats = map.queryRenderedFeatures(e.point, { layers:['cars-pin'] });
       const canvas = map.getCanvas();
       if (feats && feats.length){
         canvas.style.cursor = 'pointer';
-        // tiny label (desktop only)
         if (!('ontouchstart' in window)){
           const v=feats[0].properties;
           const fleet = v.number ? v.number : (v.id?String(v.id).slice(-4):'');
-          const txt = `${v.model||'Vehicle'} • ${fleet}`;
-          hoverTag.textContent = txt;
+          hoverTag.textContent = `${v.model||'Vehicle'} • ${fleet}`;
           hoverTag.style.left = `${e.point.x}px`;
           hoverTag.style.top  = `${e.point.y}px`;
           hoverTag.style.display = 'block';
@@ -432,7 +437,7 @@
   let timer=null; window.__CITY_CACHE={cars:[]};
   const setCount=n=>{countEl.textContent=`${n} ${n===1?'car':'cars'}`};
   const emptyFC=()=>({type:'FeatureCollection',features:[]});
-  const toGeo=data=>({type:'FeatureCollection',features:data.map(v=>({type:'Feature',geometry:{type:'Point',coordinates:[Number(v.lng),Number(v.lat)]},properties:{id:v.id??null,model:v.model??'Vehicle',plate:v.plate??'',number:v.number??'',pct:(typeof v.pct==='number')?v.pct:null,rangeKm:(typeof v.rangeKm==='number')?v.rangeKm:null,address:v.address||'',kind:v.kind||'car'}}))});
+  const toGeo=data=>({type:'FeatureCollection',features=data.map(v=>({type:'Feature',geometry:{type:'Point',coordinates:[Number(v.lng),Number(v.lat)]},properties:{id:v.id??null,model:v.model??'Vehicle',plate:v.plate??'',number:v.number??'',pct:(typeof v.pct==='number')?v.pct:null,rangeKm:(typeof v.rangeKm==='number')?v.rangeKm:null,address:v.address||'',kind:v.kind||'car'}}))});
 
   function applyFilterAndRender({fit=false}={}){
     const cars=window.__CITY_CACHE.cars||[]; const sel=modelSelections.get(currentCity)||new Set();
@@ -466,11 +471,7 @@
     fill(carsDiv,grouped.car); fill(vansDiv,grouped.van); fill(scootDiv,grouped.scooter);
   }
 
-  const modelSelections = new Map();
-  const modelOptions    = new Map();
-  let lastUIChange = 0;
-
-  const allBtn = document.getElementById('all'), noneBtn = document.getElementById('none');
+  // select all / none
   allBtn.addEventListener('click',()=>{
     const opts=modelOptions.get(currentCity)||{car:[],van:[],scooter:[]};
     modelSelections.set(currentCity,new Set([...(opts.car||[]),...(opts.van||[]),...(opts.scooter||[])]));
@@ -483,6 +484,7 @@
     lastUIChange=Date.now(); applyFilterAndRender({fit:false});
   });
 
+  // city change
   citySel.addEventListener('change', ()=>{
     const nextCity = citySel.value;
     modelSelections.delete(nextCity);
@@ -508,6 +510,7 @@
     loadAll(false,{fit:false}).finally(()=> setRefreshing(false));
   });
 
+  // zones toggles
   relCB.addEventListener('change',e=>toggleLayer('relocation',e.target.checked));
   nopCB.addEventListener('change',e=>toggleLayer('nopark',e.target.checked));
   ogCB .addEventListener('change',e=>toggleLayer('ogarniam',e.target.checked));
@@ -524,6 +527,14 @@
       const tooSoon=Date.now()-lastUIChange<1500; if(!tooSoon) buildModelPanelIfNeeded(grouped);
       window.__CITY_CACHE.cars=cars; applyFilterAndRender({fit});
     }catch(e){console.error(e);}
+    // zones – optional fetch (ignored errors)
+    try{
+      const res=await fetch(`${API_AREAS}?city=${encodeURIComponent(currentCity)}`);
+      const areas=await res.json();
+      if(areas?.relocation) map.getSource('zones-relocation')?.setData(areas.relocation);
+      if(areas?.nopark)     map.getSource('zones-nopark')?.setData(areas.nopark);
+      if(areas?.ogarniam)   map.getSource('zones-ogarniam')?.setData(areas.ogarniam);
+    }catch(e){}
     clearTimeout(timer); timer=setTimeout(()=>loadAll(false,{fit:false}),20000);
   }
 
