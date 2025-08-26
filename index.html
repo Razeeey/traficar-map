@@ -48,10 +48,6 @@
     box-shadow:0 18px 50px rgba(0,0,0,.45);border:1px solid #eceff3;
   }
   .maplibregl-popup-close-button{color:#444}
-  .maplibregl-popup-anchor-top .maplibregl-popup-tip{border-bottom-color:var(--card)}
-  .maplibregl-popup-anchor-bottom .maplibregl-popup-tip{border-top-color:var(--card)}
-  .maplibregl-popup-anchor-left .maplibregl-popup-tip{border-right-color:var(--card)}
-  .maplibregl-popup-anchor-right .maplibregl-popup-tip{border-left-color:var(--card)}
 
   .badge{background:#7b4bff;color:#fff;padding:4px 10px;border-radius:10px;font-weight:800;display:inline-block;min-width:52px;text-align:center}
   .muted{color:var(--ink2)}
@@ -88,7 +84,6 @@
   <button id="refresh">Refresh <span id="spin" class="spinner" style="display:none"></span></button>
   <div class="spacer"></div>
   <div id="count" class="count">0 cars</div>
-  <!-- Filters button sits to the right of the counter -->
   <button id="filterBtn" class="chip" aria-controls="filtersPanel" aria-expanded="false" title="Filtry">
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
       <path d="M12 3 3 7l9 4 9-4-9-4Z" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7" />
@@ -156,10 +151,11 @@
   citySel.value = initialCity;
   let currentCity = citySel.value;
 
-  // selections: city -> Set(model). We'll reset on city change.
+  // selections & model options (single declarations)
   const modelSelections = new Map();
   const modelOptions    = new Map();
-  let lastUIChange = 0; const noteUI = ()=>{ lastUIChange = Date.now(); };
+  let lastUIChange = 0;
+  const noteUI = ()=>{ lastUIChange = Date.now(); };
 
   function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
   const CUSTOM_FILE_BY_MODEL = {
@@ -378,9 +374,6 @@
     if(fit&&filtered.length){const b=new maplibregl.LngLatBounds(); filtered.forEach(v=>b.extend([Number(v.lng),Number(v.lat)])); try{map.fitBounds(b,{padding:60,maxZoom:15})}catch{}}
   }
 
-  // model filter UI
-  const modelOptions = new Map();
-  let lastUIChange = 0;
   function sameList(a=[],b=[]){return a.slice().sort().join('|')===b.slice().sort().join('|')}
   function buildModelPanelIfNeeded(grouped){
     const prev=modelOptions.get(currentCity); const need=!prev||!sameList(prev.car,grouped.car)||!sameList(prev.van,grouped.van)||!sameList(prev.scooter,grouped.scooter);
@@ -388,7 +381,6 @@
     modelOptions.set(currentCity,grouped);
     // init selection to "all checked"
     modelSelections.set(currentCity,new Set([...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])]));
-
     const carsDiv=document.getElementById('models-cars'),vansDiv=document.getElementById('models-vans'),scootDiv=document.getElementById('models-scooters');
     function fill(el,arr){
       el.innerHTML='';
@@ -400,8 +392,7 @@
         cb.addEventListener('change',()=>{
           const set=modelSelections.get(currentCity);
           if(cb.checked)set.add(name); else set.delete(name);
-          lastUIChange = Date.now();
-          applyFilterAndRender({fit:false});
+          noteUI(); applyFilterAndRender({fit:false});
         });
         el.appendChild(row);
       });
@@ -414,14 +405,12 @@
     const opts=modelOptions.get(currentCity)||{car:[],van:[],scooter:[]};
     modelSelections.set(currentCity,new Set([...(opts.car||[]),...(opts.van||[]),...(opts.scooter||[])]));
     document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb=>cb.checked=true);
-    lastUIChange = Date.now();
-    applyFilterAndRender({fit:false});
+    noteUI(); applyFilterAndRender({fit:false});
   });
   noneBtn.addEventListener('click',()=>{
     modelSelections.set(currentCity,new Set());
     document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb=>cb.checked=false);
-    lastUIChange = Date.now();
-    applyFilterAndRender({fit:false});
+    noteUI(); applyFilterAndRender({fit:false});
   });
 
   // City change — ALWAYS reset filters for the city we switch to
