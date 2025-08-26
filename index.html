@@ -28,8 +28,10 @@
   select:hover,button:hover{border-color:rgba(255,255,255,.18)}
   .spacer{flex:1}
   .count{background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
+  .chip{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:44px;height:36px;border-radius:12px;background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:0 10px}
+  .chip svg{display:block}
 
-  /* filter panel (popup style) */
+  /* filter panel (popup style, no overlay) */
   .panel{position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;width:240px;box-shadow:var(--shadow);max-height:70vh;overflow:auto}
   .panel.hidden{display:none}
   .panel h4{margin:8px 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
@@ -62,12 +64,6 @@
   .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-2px;margin-left:8px}
   @keyframes spin{to{transform:rotate(360deg)}}
   button[disabled]{opacity:.6;cursor:not-allowed}
-
-  /* overlay & floating button */
-  .overlay{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.35);backdrop-filter:blur(2px);display:none}
-  .overlay.show{display:block}
-  .fab{position:fixed;right:12px;bottom:12px;z-index:12;width:56px;height:56px;border-radius:14px;background:rgba(23,23,28,.92);color:#e7e8ef;border:1px solid rgba(255,255,255,.10);box-shadow:0 12px 30px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;cursor:pointer}
-  .fab:hover{border-color:rgba(255,255,255,.25)}
 </style>
 </head>
 <body>
@@ -92,6 +88,14 @@
   <button id="refresh">Refresh <span id="spin" class="spinner" style="display:none"></span></button>
   <div class="spacer"></div>
   <div id="count" class="count">0 cars</div>
+  <!-- Filters button sits to the right of the counter -->
+  <button id="filterBtn" class="chip" aria-controls="filtersPanel" aria-expanded="false" title="Filtry">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
+      <path d="M12 3 3 7l9 4 9-4-9-4Z" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7" />
+      <path d="m3 12 9 4 9-4" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7"/>
+      <path d="m3 17 9 4 9-4" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7"/>
+    </svg>
+  </button>
 </div>
 
 <!-- Filter panel (hidden by default) -->
@@ -109,16 +113,6 @@
   <div class="row"><input type="checkbox" id="toggle-nop" checked><label for="toggle-nop">Zakaz parkowania</label></div>
   <div class="row"><input type="checkbox" id="toggle-og" checked><label for="toggle-og">Ogarniam</label></div>
 </div>
-
-<!-- Overlay + Floating Filters Button -->
-<div id="overlay" class="overlay" aria-hidden="true"></div>
-<button id="filterBtn" class="fab" aria-controls="filtersPanel" aria-expanded="false" title="Filtry">
-  <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden="true">
-    <path d="M12 3 3 7l9 4 9-4-9-4Z" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7" />
-    <path d="m3 12 9 4 9-4" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7"/>
-    <path d="m3 17 9 4 9-4" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7"/>
-  </svg>
-</button>
 
 <script>
 (function(){
@@ -142,22 +136,21 @@
   const refreshBtn = document.getElementById('refresh');
   const spinEl = document.getElementById('spin');
   const countEl = document.getElementById('count');
+  const filterBtn = document.getElementById('filterBtn');
+  const panelEl   = document.getElementById('filtersPanel');
+
   const allBtn = document.getElementById('all');
   const noneBtn= document.getElementById('none');
   const relCB = document.getElementById('toggle-rel');
   const nopCB = document.getElementById('toggle-nop');
   const ogCB  = document.getElementById('toggle-og');
 
-  const panelEl   = document.getElementById('filtersPanel');
-  const overlayEl = document.getElementById('overlay');
-  const filterBtn = document.getElementById('filterBtn');
-
   const setRefreshing = (on)=>{ refreshBtn.disabled = !!on; spinEl.style.display = on?'inline-block':'none'; };
 
-  function openFilters(){ panelEl.classList.remove('hidden'); overlayEl.classList.add('show'); filterBtn.setAttribute('aria-expanded','true'); }
-  function closeFilters(){ panelEl.classList.add('hidden'); overlayEl.classList.remove('show'); filterBtn.setAttribute('aria-expanded','false'); }
+  // Filters button toggles the panel; map stays interactive
+  function openFilters(){ panelEl.classList.remove('hidden'); filterBtn.setAttribute('aria-expanded','true'); }
+  function closeFilters(){ panelEl.classList.add('hidden');  filterBtn.setAttribute('aria-expanded','false'); }
   filterBtn.addEventListener('click', ()=>{ panelEl.classList.contains('hidden') ? openFilters() : closeFilters(); });
-  overlayEl.addEventListener('click', closeFilters);
   window.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeFilters(); });
 
   citySel.value = initialCity;
@@ -385,6 +378,9 @@
     if(fit&&filtered.length){const b=new maplibregl.LngLatBounds(); filtered.forEach(v=>b.extend([Number(v.lng),Number(v.lat)])); try{map.fitBounds(b,{padding:60,maxZoom:15})}catch{}}
   }
 
+  // model filter UI
+  const modelOptions = new Map();
+  let lastUIChange = 0;
   function sameList(a=[],b=[]){return a.slice().sort().join('|')===b.slice().sort().join('|')}
   function buildModelPanelIfNeeded(grouped){
     const prev=modelOptions.get(currentCity); const need=!prev||!sameList(prev.car,grouped.car)||!sameList(prev.van,grouped.van)||!sameList(prev.scooter,grouped.scooter);
@@ -392,6 +388,7 @@
     modelOptions.set(currentCity,grouped);
     // init selection to "all checked"
     modelSelections.set(currentCity,new Set([...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])]));
+
     const carsDiv=document.getElementById('models-cars'),vansDiv=document.getElementById('models-vans'),scootDiv=document.getElementById('models-scooters');
     function fill(el,arr){
       el.innerHTML='';
@@ -403,7 +400,8 @@
         cb.addEventListener('change',()=>{
           const set=modelSelections.get(currentCity);
           if(cb.checked)set.add(name); else set.delete(name);
-          noteUI(); applyFilterAndRender({fit:false});
+          lastUIChange = Date.now();
+          applyFilterAndRender({fit:false});
         });
         el.appendChild(row);
       });
@@ -416,12 +414,14 @@
     const opts=modelOptions.get(currentCity)||{car:[],van:[],scooter:[]};
     modelSelections.set(currentCity,new Set([...(opts.car||[]),...(opts.van||[]),...(opts.scooter||[])]));
     document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb=>cb.checked=true);
-    noteUI(); applyFilterAndRender({fit:false});
+    lastUIChange = Date.now();
+    applyFilterAndRender({fit:false});
   });
   noneBtn.addEventListener('click',()=>{
     modelSelections.set(currentCity,new Set());
     document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb=>cb.checked=false);
-    noteUI(); applyFilterAndRender({fit:false});
+    lastUIChange = Date.now();
+    applyFilterAndRender({fit:false});
   });
 
   // City change — ALWAYS reset filters for the city we switch to
