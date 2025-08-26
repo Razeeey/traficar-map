@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="pl">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>TrafiCar — Live Cars</title>
+<title>TrafiCar — Live</title>
 
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css"/>
 <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
@@ -22,24 +22,26 @@
   #map{position:fixed;inset:0}
 
   /* top bar */
-  .topbar{position:fixed;left:12px;right:12px;top:12px;z-index:10;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:rgba(23,23,28,.82);backdrop-filter:saturate(1.2) blur(8px);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);padding:8px 10px;box-shadow:var(--shadow)}
-  .brand{font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));padding:8px 12px;border-radius:10px}
-  select,button{background:var(--panel2);color:var(--text);border:1px solid rgba(255,255,255,.08);padding:9px 12px;border-radius:10px;font-weight:600;cursor:pointer}
-  select:hover,button:hover{border-color:rgba(255,255,255,.18)}
+  .topbar{position:fixed;left:12px;right:12px;top:12px;z-index:10;display:flex;gap:10px;align-items:center;background:rgba(23,23,28,.82);backdrop-filter:saturate(1.2) blur(8px);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);padding:8px 10px;box-shadow:var(--shadow)}
+  .pill{height:40px;border-radius:12px;display:inline-flex;align-items:center;gap:10px;padding:0 12px;border:1px solid rgba(255,255,255,.08);background:var(--panel2);color:var(--text);font-weight:600}
+  .pill button, .pill select{border:0;background:transparent;color:inherit;font:inherit}
+  .pill button{cursor:pointer}
+  .pill:hover{border-color:rgba(255,255,255,.18)}
   .spacer{flex:1}
-  .count{background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
-  .chip{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:44px;height:36px;border-radius:12px;background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:0 10px}
+  .count{border-radius:999px}
+  .chip{height:40px;min-width:44px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:var(--panel2);display:inline-flex;align-items:center;justify-content:center;padding:0 10px}
   .chip svg{display:block}
+  .selectwrap{position:relative}
+  .selectwrap img{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:.95;pointer-events:none}
+  .selectwrap select{appearance:auto;padding:8px 28px 8px 36px;height:40px;border-radius:12px}
 
-  /* filter panel (popup style, no overlay) */
-  .panel{position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;width:260px;box-shadow:var(--shadow);max-height:70vh;overflow:auto}
+  /* filter panel (no title; X in first header line) */
+  .panel{position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;width:260px;box-shadow:var(--shadow);max-height:72vh;overflow:auto}
   .panel.hidden{display:none}
-  /* header inside panel with close X */
-  .panel-header{position:sticky;top:-12px;margin:-12px -12px 8px;background:rgba(23,23,28,.92);padding:12px;border-bottom:1px solid rgba(255,255,255,.08);border-top-left-radius:12px;border-top-right-radius:12px;display:flex;align-items:center;justify-content:space-between}
-  .panel-title{font-weight:800;letter-spacing:.02em}
-  .closebtn{width:32px;height:32px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#e8e9f1;display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;cursor:pointer}
+  .hdr{display:flex;align-items:center;justify-content:space-between;margin:4px 0 6px}
+  .hdr h4{margin:0;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  .closebtn{width:28px;height:28px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#e8e9f1;display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;cursor:pointer}
   .closebtn:hover{border-color:rgba(255,255,255,.3)}
-  .panel h4{margin:8px 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
   .row{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:14px}
   .panel input[type="checkbox"]{width:18px;height:18px;cursor:pointer;accent-color:#7b4bff}
   .panel .small{display:flex;gap:12px;margin:4px 0 2px}
@@ -48,12 +50,8 @@
 
   /* popup card */
   .maplibregl-popup{max-width:360px !important}
-  .maplibregl-popup-content{
-    padding:12px;border-radius:14px;background:var(--card);color:var(--ink);
-    box-shadow:0 18px 50px rgba(0,0,0,.45);border:1px solid #eceff3;
-  }
+  .maplibregl-popup-content{padding:12px;border-radius:14px;background:var(--card);color:var(--ink);box-shadow:0 18px 50px rgba(0,0,0,.45);border:1px solid #eceff3}
   .maplibregl-popup-close-button{color:#444}
-
   .badge{background:#7b4bff;color:#fff;padding:4px 10px;border-radius:10px;font-weight:800;display:inline-block;min-width:52px;text-align:center}
   .muted{color:var(--ink2)}
   .infocard{min-width:300px;max-width:340px}
@@ -61,7 +59,6 @@
   .title{font-weight:800;font-size:16px;color:var(--ink)}
   .divider{height:1px;background:var(--divider);margin:6px 0 8px}
 
-  /* refresh spinner */
   .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-2px;margin-left:8px}
   @keyframes spin{to{transform:rotate(360deg)}}
   button[disabled]{opacity:.6;cursor:not-allowed}
@@ -71,8 +68,8 @@
 <div id="map"></div>
 
 <div class="topbar">
-  <div class="brand">🚗 TrafiCar</div>
-  <label><span class="muted" style="font-size:.85rem;margin-right:6px">City</span>
+  <div class="pill selectwrap">
+    <img src="/img/location-icon.png" alt="" />
     <select id="city">
       <option value="krakow">Kraków</option>
       <option value="warszawa">Warszawa</option>
@@ -85,10 +82,10 @@
       <option value="szczecin">Szczecin</option>
       <option value="rzeszow">Rzeszów</option>
     </select>
-  </label>
-  <button id="refresh">Refresh <span id="spin" class="spinner" style="display:none"></span></button>
+  </div>
+  <div class="pill"><button id="refresh">Refresh <span id="spin" class="spinner" style="display:none"></span></button></div>
   <div class="spacer"></div>
-  <div id="count" class="count">0 cars</div>
+  <div id="count" class="pill count">0 cars</div>
   <button id="filterBtn" class="chip" aria-controls="filtersPanel" aria-expanded="false" title="Filtry">
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
       <path d="M12 3 3 7l9 4 9-4-9-4Z" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7" />
@@ -100,20 +97,22 @@
 
 <!-- Filter panel (hidden by default) -->
 <div id="filtersPanel" class="panel hidden">
-  <div class="panel-header">
-    <div class="panel-title">Filtry</div>
+  <div class="hdr">
+    <h4>OSOBOWE</h4>
     <button id="closeFilters" class="closebtn" aria-label="Zamknij">×</button>
   </div>
-
-  <h4>Osobowe</h4>
   <div id="models-cars"></div>
-  <h4>Dostawcze</h4>
+
+  <div class="hdr" style="margin-top:10px"><h4>DOSTAWCZE</h4></div>
   <div id="models-vans"></div>
-  <h4>Mikromobilność</h4>
+
+  <div class="hdr" style="margin-top:10px"><h4>MIKROMOBILNOŚĆ</h4></div>
   <div id="models-scooters"></div>
+
   <div class="small"><a id="all">Zaznacz wszystko</a><a id="none">Wyczyść</a></div>
   <hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:10px 0">
-  <h4>Strefy</h4>
+
+  <div class="hdr"><h4>STREFY</h4></div>
   <div class="row"><input type="checkbox" id="toggle-rel" checked><label for="toggle-rel">Relokacja</label></div>
   <div class="row"><input type="checkbox" id="toggle-nop" checked><label for="toggle-nop">Zakaz parkowania</label></div>
   <div class="row"><input type="checkbox" id="toggle-og" checked><label for="toggle-og">Ogarniam</label></div>
@@ -121,8 +120,7 @@
 
 <script>
 (function(){
-  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // ← put your key IN QUOTES
-
+  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // ← key IN QUOTES
   const API_CARS  = '/.netlify/functions/traficar-auto';
   const API_AREAS = '/.netlify/functions/traficar-areas';
 
@@ -137,28 +135,26 @@
   const params = new URLSearchParams(location.search);
   const initialCity = centers[params.get('city')] ? params.get('city') : 'krakow';
 
-  const citySel = document.getElementById('city');
+  const citySel  = document.getElementById('city');
   const refreshBtn = document.getElementById('refresh');
-  const spinEl = document.getElementById('spin');
-  const countEl = document.getElementById('count');
-  const filterBtn = document.getElementById('filterBtn');
-  const panelEl   = document.getElementById('filtersPanel');
-  const closeBtn  = document.getElementById('closeFilters');
+  const spinEl   = document.getElementById('spin');
+  const countEl  = document.getElementById('count');
+  const filterBtn= document.getElementById('filterBtn');
+  const panelEl  = document.getElementById('filtersPanel');
+  const closeBtn = document.getElementById('closeFilters');
 
   const allBtn = document.getElementById('all');
   const noneBtn= document.getElementById('none');
-  const relCB = document.getElementById('toggle-rel');
-  const nopCB = document.getElementById('toggle-nop');
-  const ogCB  = document.getElementById('toggle-og');
+  const relCB  = document.getElementById('toggle-rel');
+  const nopCB  = document.getElementById('toggle-nop');
+  const ogCB   = document.getElementById('toggle-og');
 
   const setRefreshing = (on)=>{ refreshBtn.disabled = !!on; spinEl.style.display = on?'inline-block':'none'; };
 
-  // Filters button toggles the panel; map stays interactive
   function openFilters(){ panelEl.classList.remove('hidden'); filterBtn.setAttribute('aria-expanded','true'); }
   function closeFilters(){ panelEl.classList.add('hidden');  filterBtn.setAttribute('aria-expanded','false'); }
   filterBtn.addEventListener('click', ()=>{ panelEl.classList.contains('hidden') ? openFilters() : closeFilters(); });
   closeBtn.addEventListener('click', closeFilters);
-  window.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeFilters(); });
 
   citySel.value = initialCity;
   let currentCity = citySel.value;
@@ -185,8 +181,19 @@
     return { webp: `${base}.webp`, jpg: `${base}.jpg` };
   }
 
-  /* ---------- pins & cluster pies ---------- */
-  function pinImageData(kind){
+  /* ---------- utility: load images ---------- */
+  function loadPng(url){
+    return new Promise((resolve, reject)=>{
+      const img = new Image();
+      img.decoding = 'async';
+      img.onload = ()=>resolve(img);
+      img.onerror = reject;
+      img.src = url;
+    });
+  }
+
+  /* ---------- build a pin with your icon ---------- */
+  function pinImageData(kind, iconImg){
     const color =
       kind === 'van'     ? '#1d4ed8' :
       kind === 'scooter' ? '#2dd4bf' : '#7b4bff';
@@ -210,23 +217,14 @@
     g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.stroke();
     g.beginPath(); g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14); g.closePath(); g.stroke();
 
-    // white pictograms
-    g.fillStyle = '#fff';
-    if (kind === 'van') {
-      g.fillRect(cx-11, cy-6, 14, 10);
-      g.fillRect(cx+3,  cy-4,  8,  8);
-      g.beginPath(); g.arc(cx-7, cy+7, 3, 0, Math.PI*2); g.arc(cx+7, cy+7, 3, 0, Math.PI*2); g.fill();
-    } else if (kind === 'scooter') {
-      g.fillRect(cx-8, cy+3, 16, 2.5);
-      g.beginPath(); g.arc(cx-10, cy+8, 3, 0, Math.PI*2); g.arc(cx+10, cy+8, 3, 0, Math.PI*2); g.fill();
-      g.fillRect(cx+2, cy-6, 2.5, 10);
-      g.fillRect(cx-1, cy-7.5, 8, 2.5);
-    } else {
-      g.fillRect(cx-10, cy-5, 20, 9);
-      g.beginPath(); g.arc(cx-6, cy+6.5, 3, 0, Math.PI*2); g.arc(cx+6, cy+6.5, 3, 0, Math.PI*2); g.fill();
+    // your icon in center
+    if (iconImg) {
+      const ICON = 18; // keep all same size
+      g.drawImage(iconImg, cx - ICON/2, cy - ICON/2, ICON, ICON);
     }
     return g.getImageData(0,0,size,size);
   }
+
   function pieImageData(c,v,s){
     const size=64*2,r=size/2,cvs=document.createElement('canvas');cvs.width=size;cvs.height=size;const g=cvs.getContext('2d');
     g.beginPath();g.arc(r,r,r-4,0,Math.PI*2);g.fillStyle='#3e3e45';g.fill();
@@ -248,11 +246,24 @@
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
+  // tap on map closes filters (but you can still zoom/pan)
+  map.on('click', ()=>{ if(!panelEl.classList.contains('hidden')) closeFilters(); });
+
   map.on('load', async () => {
+    // load your pictograms first
+    let carPng, vanPng, scootPng;
+    try{
+      [carPng, vanPng, scootPng] = await Promise.all([
+        loadPng('/img/car-icon.png'),
+        loadPng('/img/truck-icon.png'),
+        loadPng('/img/scooter-icon.png')
+      ]);
+    }catch(e){ console.warn('Icon load failed, using simple pins'); }
+
     try {
-      map.addImage('pin-car',     pinImageData('car'),     { pixelRatio:2 });
-      map.addImage('pin-van',     pinImageData('van'),     { pixelRatio:2 });
-      map.addImage('pin-scooter', pinImageData('scooter'), { pixelRatio:2 });
+      map.addImage('pin-car',     pinImageData('car',     carPng),   { pixelRatio:2 });
+      map.addImage('pin-van',     pinImageData('van',     vanPng),   { pixelRatio:2 });
+      map.addImage('pin-scooter', pinImageData('scooter', scootPng), { pixelRatio:2 });
     } catch {}
 
     map.addSource('cars', {
@@ -265,7 +276,6 @@
       }
     });
 
-    // cluster pies
     const PIE_CACHE = new Set();
     map.on('styleimagemissing', (e)=>{
       const m=/^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id); if(!m||PIE_CACHE.has(e.id))return;
@@ -290,7 +300,6 @@
               'text-font':['Open Sans Semibold','Arial Unicode MS Bold'],'text-offset':[0,0],'text-allow-overlap':true},
       paint:{'text-color':'#ffffff','text-halo-color':'#111','text-halo-width':1.2}});
 
-    // colored pins per kind, scaled by zoom
     map.addLayer({
       id: 'cars-pin',
       type: 'symbol',
@@ -302,14 +311,7 @@
           'scooter', 'pin-scooter',
           /* default */ 'pin-car'
         ],
-        'icon-size': [
-          'interpolate', ['linear'], ['zoom'],
-          10, 0.9,
-          12, 1.2,
-          14, 1.6,
-          16, 2.0,
-          18, 2.4
-        ],
+        'icon-size': ['interpolate',['linear'],['zoom'],10,0.9,12,1.2,14,1.6,16,2.0,18,2.4],
         'icon-allow-overlap': true
       }
     });
@@ -354,22 +356,6 @@
       new maplibregl.Popup({closeButton:true,offset:12}).setLngLat([lng,lat]).setHTML(html).addTo(map);
     });
 
-    // hover tooltip
-    let hoverPopup = null;
-    map.on('mouseenter','cars-pin', (e)=>{
-      map.getCanvas().style.cursor = 'pointer';
-      const p = e.features[0].properties;
-      const txt = `${p.model || 'Vehicle'}${p.number ? ' • ' + p.number : ''}`;
-      hoverPopup = new maplibregl.Popup({ closeButton:false, closeOnClick:false, offset:10 })
-        .setLngLat(e.features[0].geometry.coordinates)
-        .setText(txt)
-        .addTo(map);
-    });
-    map.on('mouseleave','cars-pin', ()=>{
-      map.getCanvas().style.cursor = '';
-      if (hoverPopup) { hoverPopup.remove(); hoverPopup = null; }
-    });
-
     await loadAll(true,{fit:true});
   });
 
@@ -391,7 +377,6 @@
     const prev=modelOptions.get(currentCity); const need=!prev||!sameList(prev.car,grouped.car)||!sameList(prev.van,grouped.van)||!sameList(prev.scooter,grouped.scooter);
     if(!need) return;
     modelOptions.set(currentCity,grouped);
-    // init selection to "all checked"
     modelSelections.set(currentCity,new Set([...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])]));
     const carsDiv=document.getElementById('models-cars'),vansDiv=document.getElementById('models-vans'),scootDiv=document.getElementById('models-scooters');
     function fill(el,arr){
@@ -425,16 +410,14 @@
     noteUI(); applyFilterAndRender({fit:false});
   });
 
-  // City change — ALWAYS reset filters for the city we switch to
+  // City change — reset for target city
   citySel.addEventListener('change', ()=>{
     const nextCity = citySel.value;
-
-    modelSelections.delete(nextCity);  // forget previous custom set for the target city
-    modelOptions.delete(nextCity);     // force re-build of the checkbox list
+    modelSelections.delete(nextCity);  // reset
+    modelOptions.delete(nextCity);     // rebuild boxes
     lastUIChange = 0;
 
     currentCity = nextCity;
-
     const cfg = centers[currentCity] || centers.krakow;
     const p = new URLSearchParams(location.search); p.set('city', currentCity);
     history.replaceState(null,'',`?${p.toString()}`);
@@ -444,7 +427,7 @@
     setCount(0);
 
     map.easeTo({ center: cfg, zoom: cfg.z });
-    loadAll(true, { fit:true });  // rebuilds filters to "all checked"
+    loadAll(true, { fit:true });
   });
 
   // Refresh with spinner
@@ -482,7 +465,6 @@
       if(areas?.nopark)    { map.getSource('zones-nopark')?.setData(areas.nopark);       any=true; }
       if(areas?.ogarniam)  { map.getSource('zones-ogarniam')?.setData(areas.ogarniam);   any=true; }
 
-      // static fallback if function doesn't provide polygons
       if(!any){
         const tryOne = async (suffix, srcId) => {
           const r = await fetch(`/zones/${currentCity}-${suffix}.geojson`);
