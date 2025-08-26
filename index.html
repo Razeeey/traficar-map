@@ -40,13 +40,32 @@
   .city-plain{display:flex;align-items:center;gap:8px;padding:0 4px}
   .city-plain img{width:22px;height:22px;display:block;filter:drop-shadow(0 0 0 rgba(0,0,0,0.2))}
   .city-plain select{
-    appearance:auto;-webkit-appearance:menulist;
-    background:none;border:none;color:var(--text);font-weight:700;
-    padding:4px 22px 4px 0; /* leave space for native arrow */
-    height:34px;cursor:pointer;outline:none;box-shadow:none;width:auto;max-width:60vw
+    /* use our own caret so it can sit close to the text */
+    -webkit-appearance: none;
+    appearance: none;
+  
+    background-color: transparent;
+    /* little white caret, very close to the text */
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23ffffff" d="M7 9l5 5 5-5"/></svg>');
+    background-repeat: no-repeat;
+    background-size: 14px 14px;
+    background-position: right 2px center;  /* <- how close to the text */
+    
+    border: none;
+    color: var(--text);
+    font-weight: 700;
+    padding: 4px 18px 4px 0; /* small room for our caret only */
+    height: 34px;
+    cursor: pointer;
+    outline: none;
+    box-shadow: none;
+    width: auto;
+    max-width: 60vw;
   }
-  .city-plain select:focus{outline:none}
-  .city-plain select option{color:#111;background:#fff}
+  
+  /* keep the same options styling */
+  .city-plain select option{ color:#111; background:#fff; }
+
 
   /* chips on the right */
   .chip,.count{
