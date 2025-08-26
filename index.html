@@ -21,22 +21,46 @@
   body{margin:0;background:#0c0c10;color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
   #map{position:fixed;inset:0}
 
+  /* MapLibre default cursor overrides */
+  .maplibregl-canvas{cursor:default !important}
+  .maplibregl-canvas.dragging{cursor:grabbing !important}
+
   /* top bar */
-  .topbar{position:fixed;left:12px;right:12px;top:12px;z-index:10;display:flex;gap:10px;align-items:center;background:rgba(23,23,28,.82);backdrop-filter:saturate(1.2) blur(8px);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);padding:8px 10px;box-shadow:var(--shadow)}
-  .pill{height:40px;border-radius:12px;display:inline-flex;align-items:center;gap:10px;padding:0 12px;border:1px solid rgba(255,255,255,.08);background:var(--panel2);color:var(--text);font-weight:600}
-  .pill button, .pill select{border:0;background:transparent;color:inherit;font:inherit}
+  .topbar{
+    position:fixed;left:12px;right:12px;top:12px;z-index:10;
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    background:rgba(23,23,28,.82);backdrop-filter:saturate(1.2) blur(8px);
+    border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);
+    padding:8px 10px;box-shadow:var(--shadow)
+  }
+  .pill,.chip,.count{
+    height:40px;border-radius:12px;display:inline-flex;align-items:center;gap:10px;
+    padding:0 12px;border:1px solid rgba(255,255,255,.08);background:var(--panel2);
+    color:var(--text);font-weight:600
+  }
+  .pill:hover,.chip:hover,.count:hover{border-color:rgba(255,255,255,.18)}
+  .pill button,.pill select{border:0;background:transparent;color:inherit;font:inherit}
   .pill button{cursor:pointer}
-  .pill:hover{border-color:rgba(255,255,255,.18)}
-  .spacer{flex:1}
-  .count{border-radius:999px}
-  .chip{height:40px;min-width:44px;border-radius:12px;border:1px solid rgba(255,255,255,.08);background:var(--panel2);display:inline-flex;align-items:center;justify-content:center;padding:0 10px}
+  .chip{min-width:44px;justify-content:center;cursor:pointer}
   .chip svg{display:block}
+  .count{border-radius:10px;cursor:default;user-select:none}
+  .spacer{flex:1}
+
   .selectwrap{position:relative}
   .selectwrap img{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:.95;pointer-events:none}
-  .selectwrap select{appearance:auto;padding:8px 28px 8px 36px;height:40px;border-radius:12px}
+  .selectwrap select{
+    appearance:auto;padding:8px 28px 8px 36px;height:40px;border-radius:12px;cursor:pointer;
+    position:relative;z-index:12;color:var(--text);background:transparent
+  }
+  /* make dropdown options readable on desktop */
+  .selectwrap select option{color:#111;background:#fff}
 
-  /* filter panel (no title; X in first header line) */
-  .panel{position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;width:260px;box-shadow:var(--shadow);max-height:72vh;overflow:auto}
+  /* filter panel */
+  .panel{
+    position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);
+    backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;
+    padding:12px;width:260px;box-shadow:var(--shadow);max-height:72vh;overflow:auto
+  }
   .panel.hidden{display:none}
   .hdr{display:flex;align-items:center;justify-content:space-between;margin:4px 0 6px}
   .hdr h4{margin:0;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
@@ -46,7 +70,14 @@
   .panel input[type="checkbox"]{width:18px;height:18px;cursor:pointer;accent-color:#7b4bff}
   .panel .small{display:flex;gap:12px;margin:4px 0 2px}
   .panel .small a{font-size:12px;color:#bfc0ca;text-decoration:underline;cursor:pointer}
-  @media (max-width:700px){ .panel{right:50%;transform:translateX(50%);width:92vw} }
+  @media (max-width:700px){
+    .topbar{gap:8px}
+    .pill,.chip,.count{height:36px;border-radius:10px;padding:0 10px;font-size:14px}
+    .selectwrap img{left:10px}
+    .selectwrap select{height:36px;padding:6px 26px 6px 34px}
+    .count{order:3;margin-left:auto}
+    #filterBtn{order:4}
+  }
 
   /* popup card */
   .maplibregl-popup{max-width:360px !important}
@@ -85,7 +116,7 @@
   </div>
   <div class="pill"><button id="refresh">Refresh <span id="spin" class="spinner" style="display:none"></span></button></div>
   <div class="spacer"></div>
-  <div id="count" class="pill count">0 cars</div>
+  <div id="count" class="count">0 cars</div>
   <button id="filterBtn" class="chip" aria-controls="filtersPanel" aria-expanded="false" title="Filtry">
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
       <path d="M12 3 3 7l9 4 9-4-9-4Z" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7" />
@@ -120,11 +151,10 @@
 
 <script>
 (function(){
-  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // ← key IN QUOTES
+  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // put your key IN QUOTES
   const API_CARS  = '/.netlify/functions/traficar-auto';
   const API_AREAS = '/.netlify/functions/traficar-areas';
 
-  /* ---------- helpers/state ---------- */
   const centers = {
     krakow:{lng:19.9383,lat:50.0614,z:13}, warszawa:{lng:21.0122,lat:52.2297,z:12},
     wroclaw:{lng:17.0385,lat:51.1079,z:13}, poznan:{lng:16.9252,lat:52.4064,z:13},
@@ -135,13 +165,13 @@
   const params = new URLSearchParams(location.search);
   const initialCity = centers[params.get('city')] ? params.get('city') : 'krakow';
 
-  const citySel  = document.getElementById('city');
-  const refreshBtn = document.getElementById('refresh');
-  const spinEl   = document.getElementById('spin');
-  const countEl  = document.getElementById('count');
-  const filterBtn= document.getElementById('filterBtn');
-  const panelEl  = document.getElementById('filtersPanel');
-  const closeBtn = document.getElementById('closeFilters');
+  const citySel   = document.getElementById('city');
+  const refreshBtn= document.getElementById('refresh');
+  const spinEl    = document.getElementById('spin');
+  const countEl   = document.getElementById('count');
+  const filterBtn = document.getElementById('filterBtn');
+  const panelEl   = document.getElementById('filtersPanel');
+  const closeBtn  = document.getElementById('closeFilters');
 
   const allBtn = document.getElementById('all');
   const noneBtn= document.getElementById('none');
@@ -156,10 +186,19 @@
   filterBtn.addEventListener('click', ()=>{ panelEl.classList.contains('hidden') ? openFilters() : closeFilters(); });
   closeBtn.addEventListener('click', closeFilters);
 
+  // close filters when tapping the map (but not on zoom/pan)
+  let clickingMap = false;
+  document.addEventListener('pointerdown', (e)=>{
+    const mapEl = document.querySelector('.maplibregl-canvas');
+    if (e.target === mapEl && !panelEl.classList.contains('hidden')) clickingMap = true;
+  });
+  document.addEventListener('pointerup', ()=>{
+    if (clickingMap){ clickingMap = false; closeFilters(); }
+  });
+
   citySel.value = initialCity;
   let currentCity = citySel.value;
 
-  // selections & model options
   const modelSelections = new Map();
   const modelOptions    = new Map();
   let lastUIChange = 0;
@@ -181,47 +220,29 @@
     return { webp: `${base}.webp`, jpg: `${base}.jpg` };
   }
 
-  /* ---------- utility: load images ---------- */
+  /* ---------- util: load pngs ---------- */
   function loadPng(url){
     return new Promise((resolve, reject)=>{
-      const img = new Image();
-      img.decoding = 'async';
-      img.onload = ()=>resolve(img);
-      img.onerror = reject;
-      img.src = url;
+      const img = new Image(); img.decoding='async';
+      img.onload = ()=>resolve(img); img.onerror = reject; img.src=url;
     });
   }
 
-  /* ---------- build a pin with your icon ---------- */
+  /* ---------- build a pin with your icon (bigger pictogram=22px) ---------- */
   function pinImageData(kind, iconImg){
-    const color =
-      kind === 'van'     ? '#1d4ed8' :
-      kind === 'scooter' ? '#2dd4bf' : '#7b4bff';
+    const color = kind==='van' ? '#1d4ed8' : (kind==='scooter' ? '#2dd4bf' : '#7b4bff');
+    const size=64, r=16, cx=size/2, cy=size/2-2;
+    const cvs=document.createElement('canvas'); cvs.width=size; cvs.height=size;
+    const g=cvs.getContext('2d');
 
-    const size = 64, r = 16;
-    const cx = size/2, cy = size/2 - 2;
-    const cvs = document.createElement('canvas');
-    cvs.width = size; cvs.height = size;
-    const g = cvs.getContext('2d');
-
-    // shadow
-    g.beginPath(); g.ellipse(cx, cy + r + 10, r*0.9, r*0.45, 0, 0, Math.PI*2);
-    g.fillStyle = 'rgba(0,0,0,.45)'; g.fill();
-
-    // head + pointer
-    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.fillStyle = color; g.fill();
-    g.beginPath(); g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14); g.closePath(); g.fillStyle = color; g.fill();
-
-    // border
-    g.lineWidth = 2; g.strokeStyle = '#1a1a1a';
+    g.beginPath(); g.ellipse(cx, cy + r + 10, r*0.9, r*0.45, 0, 0, Math.PI*2); g.fillStyle='rgba(0,0,0,.45)'; g.fill();
+    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.fillStyle=color; g.fill();
+    g.beginPath(); g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14); g.closePath(); g.fillStyle=color; g.fill();
+    g.lineWidth=2; g.strokeStyle='#1a1a1a';
     g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.stroke();
     g.beginPath(); g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14); g.closePath(); g.stroke();
 
-    // your icon in center
-    if (iconImg) {
-      const ICON = 18; // keep all same size
-      g.drawImage(iconImg, cx - ICON/2, cy - ICON/2, ICON, ICON);
-    }
+    if(iconImg){ const ICON=22; g.drawImage(iconImg, cx-ICON/2, cy-ICON/2, ICON, ICON); }
     return g.getImageData(0,0,size,size);
   }
 
@@ -239,26 +260,24 @@
   /* ---------- map ---------- */
   const map = new maplibregl.Map({
     container:'map',
-    style: `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
+    style:`https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
     center: centers[initialCity],
     zoom: centers[initialCity].z,
     attributionControl:true
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
-  // tap on map closes filters (but you can still zoom/pan)
+  // cursors for dragging
+  map.on('dragstart', ()=> document.querySelector('.maplibregl-canvas')?.classList.add('dragging'));
+  map.on('dragend',   ()=> document.querySelector('.maplibregl-canvas')?.classList.remove('dragging'));
+
+  // clicking empty map closes filters (zooming keeps panel)
   map.on('click', ()=>{ if(!panelEl.classList.contains('hidden')) closeFilters(); });
 
   map.on('load', async () => {
-    // load your pictograms first
+    // load your pictograms
     let carPng, vanPng, scootPng;
-    try{
-      [carPng, vanPng, scootPng] = await Promise.all([
-        loadPng('/img/car-icon.png'),
-        loadPng('/img/truck-icon.png'),
-        loadPng('/img/scooter-icon.png')
-      ]);
-    }catch(e){ console.warn('Icon load failed, using simple pins'); }
+    try{ [carPng,vanPng,scootPng]=await Promise.all([loadPng('/img/car-icon.png'),loadPng('/img/truck-icon.png'),loadPng('/img/scooter-icon.png')]); }catch(e){}
 
     try {
       map.addImage('pin-car',     pinImageData('car',     carPng),   { pixelRatio:2 });
@@ -356,6 +375,10 @@
       new maplibregl.Popup({closeButton:true,offset:12}).setLngLat([lng,lat]).setHTML(html).addTo(map);
     });
 
+    // pointer cursor on pins
+    map.on('mouseenter','cars-pin', ()=> map.getCanvas().style.cursor='pointer');
+    map.on('mouseleave','cars-pin', ()=> map.getCanvas().style.cursor='default');
+
     await loadAll(true,{fit:true});
   });
 
@@ -413,8 +436,8 @@
   // City change — reset for target city
   citySel.addEventListener('change', ()=>{
     const nextCity = citySel.value;
-    modelSelections.delete(nextCity);  // reset
-    modelOptions.delete(nextCity);     // rebuild boxes
+    modelSelections.delete(nextCity);
+    modelOptions.delete(nextCity);
     lastUIChange = 0;
 
     currentCity = nextCity;
