@@ -21,11 +21,9 @@
   body{margin:0;background:#0c0c10;color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
   #map{position:fixed;inset:0}
 
-  /* MapLibre cursor behavior */
   .maplibregl-canvas{cursor:default !important;-webkit-tap-highlight-color:transparent}
   .maplibregl-canvas.dragging{cursor:grabbing !important}
 
-  /* top bar */
   .topbar{
     position:fixed;left:12px;right:12px;top:12px;z-index:10;
     display:flex;align-items:center;gap:10px;flex-wrap:wrap;
@@ -45,7 +43,6 @@
   .count{border-radius:10px;cursor:default;user-select:none}
   .spacer{flex:1}
 
-  /* city select with bigger icon, auto width */
   .selectwrap{position:relative;display:flex;align-items:center}
   .selectwrap img{
     position:absolute;left:12px;top:50%;transform:translateY(-50%);
@@ -53,7 +50,7 @@
   }
   .selectwrap select{
     appearance:auto;-webkit-appearance:menulist;
-    padding:8px 28px 8px 52px;  /* room for 24px icon */
+    padding:8px 28px 8px 52px;
     height:40px;border-radius:12px;border:0;background:transparent;color:var(--text);
     cursor:pointer;outline:none;box-shadow:none;width:auto;min-width:120px;max-width:220px
   }
@@ -61,7 +58,6 @@
   .selectwrap select:focus-visible{outline:0}
   .selectwrap select option{color:#111;background:#fff}
 
-  /* filter panel */
   .panel{
     position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);
     backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;
@@ -84,7 +80,6 @@
     #filterBtn{order:4}
   }
 
-  /* popup card */
   .maplibregl-popup{max-width:360px !important}
   .maplibregl-popup-content{padding:12px;border-radius:14px;background:var(--card);color:var(--ink);box-shadow:0 18px 50px rgba(0,0,0,.45);border:1px solid #eceff3}
   .maplibregl-popup-close-button{color:#444}
@@ -99,7 +94,6 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   button[disabled]{opacity:.6;cursor:not-allowed}
 
-  /* tiny hover tooltip */
   .hoverTag{
     position:absolute;z-index:12;pointer-events:none;transform:translate(-50%,-140%);
     background:rgba(23,23,28,.92);border:1px solid rgba(255,255,255,.1);
@@ -138,7 +132,6 @@
   </button>
 </div>
 
-<!-- Filter panel -->
 <div id="filtersPanel" class="panel hidden">
   <div class="hdr">
     <h4>OSOBOWE</h4>
@@ -179,64 +172,60 @@
   const params = new URLSearchParams(location.search);
   const initialCity = centers[params.get('city')] ? params.get('city') : 'krakow';
 
-  /* DOM */
-  const citySel   = document.getElementById('city');
-  const refreshBtn= document.getElementById('refresh');
-  const spinEl    = document.getElementById('spin');
-  const countEl   = document.getElementById('count');
-  const filterBtn = document.getElementById('filterBtn');
-  const panelEl   = document.getElementById('filtersPanel');
-  const closeBtn  = document.getElementById('closeFilters');
-  const hoverTag  = document.getElementById('hoverTag');
+  var citySel   = document.getElementById('city');
+  var refreshBtn= document.getElementById('refresh');
+  var spinEl    = document.getElementById('spin');
+  var countEl   = document.getElementById('count');
+  var filterBtn = document.getElementById('filterBtn');
+  var panelEl   = document.getElementById('filtersPanel');
+  var closeBtn  = document.getElementById('closeFilters');
+  var hoverTag  = document.getElementById('hoverTag');
 
-  const allBtn = document.getElementById('all');
-  const noneBtn= document.getElementById('none');
-  const relCB  = document.getElementById('toggle-rel');
-  const nopCB  = document.getElementById('toggle-nop');
-  const ogCB   = document.getElementById('toggle-og');
+  var allBtn = document.getElementById('all');
+  var noneBtn= document.getElementById('none');
+  var relCB  = document.getElementById('toggle-rel');
+  var nopCB  = document.getElementById('toggle-nop');
+  var ogCB   = document.getElementById('toggle-og');
 
-  const setRefreshing = (on)=>{ refreshBtn.disabled = !!on; spinEl.style.display = on?'inline-block':'none'; };
+  function setRefreshing(on){ refreshBtn.disabled = !!on; spinEl.style.display = on?'inline-block':'none'; }
 
   function openFilters(){ panelEl.classList.remove('hidden'); filterBtn.setAttribute('aria-expanded','true'); }
   function closeFilters(){ panelEl.classList.add('hidden');  filterBtn.setAttribute('aria-expanded','false'); }
-  filterBtn.addEventListener('click', ()=>{ panelEl.classList.contains('hidden') ? openFilters() : closeFilters(); });
+  filterBtn.addEventListener('click', function(){ panelEl.classList.contains('hidden') ? openFilters() : closeFilters(); });
   closeBtn.addEventListener('click', closeFilters);
 
-  // close panel when tapping map (not while zoom/pan)
-  let clickingMap = false;
-  document.addEventListener('pointerdown', (e)=>{
-    const mapEl = document.querySelector('.maplibregl-canvas');
+  var clickingMap = false;
+  document.addEventListener('pointerdown', function(e){
+    var mapEl = document.querySelector('.maplibregl-canvas');
     if (e.target === mapEl && !panelEl.classList.contains('hidden')) clickingMap = true;
   });
-  document.addEventListener('pointerup', ()=>{
+  document.addEventListener('pointerup', function(){
     if (clickingMap){ clickingMap = false; closeFilters(); }
   });
 
   citySel.value = initialCity;
-  let currentCity = citySel.value;
+  var currentCity = citySel.value;
 
-  // auto width for city select
   function fitCityWidth(){
-    const text = citySel.options[citySel.selectedIndex].text || '';
-    const probe = document.createElement('span');
-    const cs = getComputedStyle(citySel);
-    probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font:${cs.fontSize} ${cs.fontFamily};font-weight:${cs.fontWeight}`;
+    var text = citySel.options[citySel.selectedIndex].text || '';
+    var probe = document.createElement('span');
+    var cs = getComputedStyle(citySel);
+    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:'+cs.fontSize+' '+cs.fontFamily+';font-weight:'+cs.fontWeight;
     probe.textContent = text;
     document.body.appendChild(probe);
-    const w = probe.getBoundingClientRect().width;
+    var w = probe.getBoundingClientRect().width;
     document.body.removeChild(probe);
-    const pad = 52 /*left icon*/ + 28 /*arrow*/;
-    const min = 120, max = matchMedia('(max-width:700px)').matches ? 200 : 220;
+    var pad = 52 + 28;
+    var min = 120, max = (window.matchMedia && matchMedia('(max-width:700px)').matches) ? 200 : 220;
     citySel.style.width = Math.min(max, Math.max(min, Math.ceil(w + pad))) + 'px';
   }
 
-  /* selections + options (single declaration) */
-  const modelSelections = new Map();
-  const modelOptions    = new Map();
-  let lastUIChange = 0;
+  var modelSelections = new Map();
+  var modelOptions    = new Map();
+  var lastUIChange = 0;
 
   function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
-  const CUSTOM_FILE_BY_MODEL = {
+  var CUSTOM_FILE_BY_MODEL = {
     'renault-arkana':  'renault-arkana-traficar',
     'renault-clio-v':  'renault-clio-traficar',
     'dacia-sandero':   'dacia-sandero-traficar',
@@ -246,24 +235,23 @@
     'navee-d1-pro':    'NAVEE-D1-PRO-traficar'
   };
   function modelImage(model){
-    const s = slug(model);
-    const base = CUSTOM_FILE_BY_MODEL[s] ? `/img/${CUSTOM_FILE_BY_MODEL[s]}` : `/img/${s}`;
-    return { webp: `${base}.webp`, jpg: `${base}.jpg` };
+    var s = slug(model);
+    var base = CUSTOM_FILE_BY_MODEL[s] ? '/img/'+CUSTOM_FILE_BY_MODEL[s] : '/img/'+s;
+    return { webp: base + '.webp', jpg: base + '.jpg' };
   }
 
   function loadPng(url){
-    return new Promise((resolve, reject)=>{
-      const img = new Image(); img.decoding='async';
-      img.onload = ()=>resolve(img); img.onerror = reject; img.src=url;
+    return new Promise(function(resolve, reject){
+      var img = new Image(); img.decoding='async';
+      img.onload = function(){ resolve(img); }; img.onerror = reject; img.src=url;
     });
   }
 
-  // pin with bigger car pictogram (28), van/scooter 22
   function pinImageData(kind, iconImg){
-    const color = kind==='van' ? '#1d4ed8' : (kind==='scooter' ? '#2dd4bf' : '#7b4bff');
-    const size=64, r=16, cx=size/2, cy=size/2-2;
-    const cvs=document.createElement('canvas'); cvs.width=size; cvs.height=size;
-    const g=cvs.getContext('2d');
+    var color = kind==='van' ? '#1d4ed8' : (kind==='scooter' ? '#2dd4bf' : '#7b4bff');
+    var size=64, r=16, cx=size/2, cy=size/2-2;
+    var cvs=document.createElement('canvas'); cvs.width=size; cvs.height=size;
+    var g=cvs.getContext('2d');
 
     g.beginPath(); g.ellipse(cx, cy + r + 10, r*0.9, r*0.45, 0, 0, Math.PI*2); g.fillStyle='rgba(0,0,0,.45)'; g.fill();
     g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.fillStyle=color; g.fill();
@@ -272,79 +260,72 @@
     g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.stroke();
     g.beginPath(); g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14); g.closePath(); g.stroke();
     if(iconImg){
-      const ICON = (kind==='car') ? 28 : 22;
+      var ICON = (kind==='car') ? 28 : 22;
       g.drawImage(iconImg, cx-ICON/2, cy-ICON/2, ICON, ICON);
     }
     return g.getImageData(0,0,size,size);
   }
 
   function pieImageData(c,v,s){
-    const size=64*2,r=size/2,cvs=document.createElement('canvas');cvs.width=size;cvs.height=size;const g=cvs.getContext('2d');
+    var size=64*2,r=size/2,cvs=document.createElement('canvas');cvs.width=size;cvs.height=size;var g=cvs.getContext('2d');
     g.beginPath();g.arc(r,r,r-4,0,Math.PI*2);g.fillStyle='#3e3e45';g.fill();
-    const T=Math.max(1,c+v+s);let a=-Math.PI/2;
-    const slice=(n,col)=>{const ang=(n/T)*Math.PI*2;g.beginPath();g.moveTo(r,r);g.arc(r,r,r-8,a,a+ang,false);g.closePath();g.fillStyle=col;g.fill();a+=ang;};
+    var T=Math.max(1,c+v+s);var a=-Math.PI/2;
+    function slice(n,col){var ang=(n/T)*Math.PI*2;g.beginPath();g.moveTo(r,r);g.arc(r,r,r-8,a,a+ang,false);g.closePath();g.fillStyle=col;g.fill();a+=ang;}
     slice(c,'#7b4bff'); slice(v,'#1d4ed8'); slice(s,'#2dd4bf');
     g.beginPath();g.arc(r,r,r-28,0,Math.PI*2);g.fillStyle='#121218';g.fill();
     g.beginPath();g.arc(r,r,r-3,0,Math.PI*2);g.strokeStyle='#111';g.lineWidth=4;g.stroke();
     return g.getImageData(0,0,size,size);
   }
 
-  /* ---------- map ---------- */
-  const map = new maplibregl.Map({
+  var map = new maplibregl.Map({
     container:'map',
-    style:`https://api.maptiler.com/maps/dataviz-dark/style.json?key=${MAPTILER_KEY}`,
+    style:'https://api.maptiler.com/maps/dataviz-dark/style.json?key='+MAPTILER_KEY,
     center: centers[initialCity],
     zoom: centers[initialCity].z,
     attributionControl:true
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass:false }), 'bottom-right');
 
-  // set dragging cursor classes
-  map.on('dragstart', ()=> document.querySelector('.maplibregl-canvas')?.classList.add('dragging'));
-  map.on('dragend',   ()=> document.querySelector('.maplibregl-canvas')?.classList.remove('dragging'));
+  map.on('dragstart', function(){ var c=document.querySelector('.maplibregl-canvas'); if(c) c.classList.add('dragging'); });
+  map.on('dragend',   function(){ var c=document.querySelector('.maplibregl-canvas'); if(c) c.classList.remove('dragging'); });
 
-  // generic click: open popup if pin under cursor, else close filters
-  map.on('click', (e)=>{
-    const feats = map.queryRenderedFeatures(e.point, { layers:['cars-pin'] });
+  map.on('click', function(e){
+    var feats = map.queryRenderedFeatures(e.point, { layers:['cars-pin'] });
     if (feats && feats.length){
-      const f=feats[0]; const v=f.properties; const [lng,lat]=f.geometry.coordinates;
-      const badge=v.number?v.number:(v.id?String(v.id).slice(-4):''); const plate=v.plate||'';
-      const pct=(v.pct!=null)?`${v.pct}%`:'—'; const range=(v.rangeKm!=null)?` (${v.rangeKm} km)`:'';
-      const addr=v.address||''; const apple=`https://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(v.model||'Car')}`;
-      const img=modelImage(v.model);
-      const titleEsc = String(v.model||'Vehicle').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-      const html=`
-        <div class="infocard">
-          <img class="carimg" loading="lazy"
-               src="${img.webp}"
-               onerror="if(this.dataset.step!=='jpg'){this.dataset.step='jpg';this.src='${img.jpg}';}else{this.onerror=null;this.style.display='none';}"
-               alt="${titleEsc}">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-            <span class="badge">${badge}</span>
-            <div class="title">${titleEsc}</div>
-          </div>
-          <div class="muted" style="margin:-2px 0 8px">${plate||'&nbsp;'}</div>
-          <div class="muted" style="margin:6px 0">⛽ <b>${pct}${range}</b></div>
-          <div class="muted" style="margin:6px 0">📍 ${addr}</div>
-          <div class="divider"></div>
-          <div style="margin:8px 0"><a href="${apple}" target="_blank" rel="noopener">Open in Apple Maps</a></div>
-        </div>`;
+      var f=feats[0]; var v=f.properties; var coords=f.geometry.coordinates;
+      var lng=coords[0], lat=coords[1];
+      var badge=v.number?(v.number):(v.id?String(v.id).slice(-4):''); var plate=v.plate||'';
+      var pct=(v.pct!=null)?(v.pct+'%'):'—'; var range=(v.rangeKm!=null)?(' ('+v.rangeKm+' km)'):'';
+      var addr=v.address||''; var apple='https://maps.apple.com/?ll='+lat+','+lng+'&q='+encodeURIComponent(v.model||'Car');
+      var img=modelImage(v.model);
+      var titleEsc = String(v.model||'Vehicle').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      var html=
+        '<div class="infocard">'+
+          '<img class="carimg" loading="lazy" src="'+img.webp+'" '+
+          'onerror="if(this.dataset.step!==\'jpg\'){this.dataset.step=\'jpg\';this.src=\''+img.jpg+'\';}else{this.onerror=null;this.style.display=\'none\';}" '+
+          'alt="'+titleEsc+'">'+
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+
+            '<span class="badge">'+badge+'</span>'+
+            '<div class="title">'+titleEsc+'</div>'+
+          '</div>'+
+          '<div class="muted" style="margin:-2px 0 8px">'+(plate||'&nbsp;')+'</div>'+
+          '<div class="muted" style="margin:6px 0">⛽ <b>'+pct+range+'</b></div>'+
+          '<div class="muted" style="margin:6px 0">📍 '+addr+'</div>'+
+          '<div class="divider"></div>'+
+          '<div style="margin:8px 0"><a href="'+apple+'" target="_blank" rel="noopener">Open in Apple Maps</a></div>'+
+        '</div>';
       new maplibregl.Popup({closeButton:true,offset:12}).setLngLat([lng,lat]).setHTML(html).addTo(map);
     }else{
       if(!panelEl.classList.contains('hidden')) closeFilters();
     }
   });
 
-  map.on('load', async () => {
-    // load pictograms
-    let carPng, vanPng, scootPng;
-    try{ [carPng,vanPng,scootPng]=await Promise.all([loadPng('/img/car-icon.png'),loadPng('/img/truck-icon.png'),loadPng('/img/scooter-icon.png')]); }catch(e){}
-
-    try {
-      map.addImage('pin-car',     pinImageData('car',     carPng),   { pixelRatio:2 });
-      map.addImage('pin-van',     pinImageData('van',     vanPng),   { pixelRatio:2 });
-      map.addImage('pin-scooter', pinImageData('scooter', scootPng), { pixelRatio:2 });
-    } catch {}
+  map.on('load', function(){
+    Promise.all([loadPng('/img/car-icon.png'),loadPng('/img/truck-icon.png'),loadPng('/img/scooter-icon.png')]).then(function(imgs){
+      try { map.addImage('pin-car',     pinImageData('car',     imgs[0]), { pixelRatio:2 }); } catch(e){}
+      try { map.addImage('pin-van',     pinImageData('van',     imgs[1]), { pixelRatio:2 }); } catch(e){}
+      try { map.addImage('pin-scooter', pinImageData('scooter', imgs[2]), { pixelRatio:2 }); } catch(e){}
+    });
 
     map.addSource('cars', {
       type:'geojson', data: emptyFC(),
@@ -356,16 +337,17 @@
       }
     });
 
-    const PIE_CACHE = new Set();
-    map.on('styleimagemissing', (e)=>{
-      const m=/^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id); if(!m||PIE_CACHE.has(e.id))return;
-      try{ map.addImage(e.id, pieImageData(+m[1],+m[2],+m[3]), { pixelRatio:2 }); PIE_CACHE.add(e.id); map.triggerRepaint(); }catch{}
+    var PIE_CACHE = {};
+    map.on('styleimagemissing', function(e){
+      var m=/^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id); if(!m||PIE_CACHE[e.id]) return;
+      try{ map.addImage(e.id, pieImageData(+m[1],+m[2],+m[3]), { pixelRatio:2 }); PIE_CACHE[e.id]=1; map.triggerRepaint(); }catch(err){}
     });
-    map.on('idle', ()=>{
-      const feats=map.queryRenderedFeatures({layers:['clusters-pie']});
-      for(const f of feats){
-        const id=`pie_${f.properties.car|0}_${f.properties.van|0}_${f.properties.scooter|0}`;
-        if(!map.hasImage(id)){ try{ map.addImage(id, pieImageData(f.properties.car|0,f.properties.van|0,f.properties.scooter|0), { pixelRatio:2 }); }catch{} }
+    map.on('idle', function(){
+      var feats=map.queryRenderedFeatures({layers:['clusters-pie']});
+      for(var i=0;i<feats.length;i++){
+        var f=feats[i];
+        var id='pie_'+((f.properties.car|0))+'_'+((f.properties.van|0))+'_'+((f.properties.scooter|0));
+        if(!map.hasImage(id)){ try{ map.addImage(id, pieImageData(f.properties.car|0,f.properties.van|0,f.properties.scooter|0), { pixelRatio:2 }); }catch(err){} }
       }
     });
 
@@ -389,14 +371,13 @@
         'icon-image': ['match', ['get','kind'],
           'van',     'pin-van',
           'scooter', 'pin-scooter',
-          /* default */ 'pin-car'
+          'pin-car'
         ],
         'icon-size': ['interpolate',['linear'],['zoom'],10,0.9,12,1.2,14,1.6,16,2.0,18,2.4],
         'icon-allow-overlap': true
       }
     });
 
-    /* overlays for zones (kept) */
     map.addSource('zones-relocation',{type:'geojson',data:emptyFC()});
     map.addSource('zones-nopark',{type:'geojson',data:emptyFC()});
     map.addSource('zones-ogarniam',{type:'geojson',data:emptyFC()});
@@ -407,18 +388,17 @@
     map.addLayer({id:'ogarniam-fill',type:'fill',source:'zones-ogarniam',paint:{'fill-color':'#a56cff','fill-opacity':0.16}});
     map.addLayer({id:'ogarniam-outline',type:'line',source:'zones-ogarniam',paint:{'line-color':'#a56cff','line-width':2}});
 
-    // pointer cursor + hover label
     function updateHover(e){
-      const feats = map.queryRenderedFeatures(e.point, { layers:['cars-pin'] });
-      const canvas = map.getCanvas();
+      var feats = map.queryRenderedFeatures(e.point, { layers:['cars-pin'] });
+      var canvas = map.getCanvas();
       if (feats && feats.length){
         canvas.style.cursor = 'pointer';
         if (!('ontouchstart' in window)){
-          const v=feats[0].properties;
-          const fleet = v.number ? v.number : (v.id?String(v.id).slice(-4):'');
-          hoverTag.textContent = `${v.model||'Vehicle'} • ${fleet}`;
-          hoverTag.style.left = `${e.point.x}px`;
-          hoverTag.style.top  = `${e.point.y}px`;
+          var v=feats[0].properties;
+          var fleet = v.number ? v.number : (v.id?String(v.id).slice(-4):'');
+          hoverTag.textContent = (v.model||'Vehicle')+' • '+fleet;
+          hoverTag.style.left = e.point.x+'px';
+          hoverTag.style.top  = e.point.y+'px';
           hoverTag.style.display = 'block';
         }
       }else{
@@ -427,41 +407,72 @@
       }
     }
     map.on('mousemove', updateHover);
-    map.on('mouseout', ()=>{ hoverTag.style.display='none'; map.getCanvas().style.cursor='default'; });
+    map.on('mouseout', function(){ hoverTag.style.display='none'; map.getCanvas().style.cursor='default'; });
 
-    await loadAll(true,{fit:true});
+    loadAll(true,{fit:true});
     fitCityWidth();
   });
 
-  /* ---------- data/filter plumbing ---------- */
-  let timer=null; window.__CITY_CACHE={cars:[]};
-  const setCount=n=>{countEl.textContent=`${n} ${n===1?'car':'cars'}`};
-  const emptyFC=()=>({type:'FeatureCollection',features:[]});
-  const toGeo=data=>({type:'FeatureCollection',features=data.map(v=>({type:'Feature',geometry:{type:'Point',coordinates:[Number(v.lng),Number(v.lat)]},properties:{id:v.id??null,model:v.model??'Vehicle',plate:v.plate??'',number:v.number??'',pct:(typeof v.pct==='number')?v.pct:null,rangeKm:(typeof v.rangeKm==='number')?v.rangeKm:null,address:v.address||'',kind:v.kind||'car'}}))});
-
-  function applyFilterAndRender({fit=false}={}){
-    const cars=window.__CITY_CACHE.cars||[]; const sel=modelSelections.get(currentCity)||new Set();
-    const filtered=sel.size?cars.filter(v=>sel.has(v.model)):[];
-    map.getSource('cars')?.setData(toGeo(filtered)); setCount(filtered.length);
-    if(fit&&filtered.length){const b=new maplibregl.LngLatBounds(); filtered.forEach(v=>b.extend([Number(v.lng),Number(v.lat)])); try{map.fitBounds(b,{padding:60,maxZoom:15})}catch{}}
+  var timer=null; window.__CITY_CACHE={cars:[]};
+  function setCount(n){ countEl.textContent = n+' '+(n===1?'car':'cars'); }
+  function emptyFC(){ return {type:'FeatureCollection',features:[]}; }
+  function toGeo(data){
+    return {
+      type:'FeatureCollection',
+      features:data.map(function(v){
+        return {
+          type:'Feature',
+          geometry:{type:'Point',coordinates:[Number(v.lng),Number(v.lat)]},
+          properties:{
+            id:(v.id!=null?v.id:null),
+            model:(v.model!=null?v.model:'Vehicle'),
+            plate:(v.plate!=null?v.plate:''),
+            number:(v.number!=null?v.number:''),
+            pct:(typeof v.pct==='number')?v.pct:null,
+            rangeKm:(typeof v.rangeKm==='number')?v.rangeKm:null,
+            address:(v.address?v.address:''),
+            kind:(v.kind?v.kind:'car')
+          }
+        };
+      })
+    };
   }
 
-  function sameList(a=[],b=[]){return a.slice().sort().join('|')===b.slice().sort().join('|')}
+  function applyFilterAndRender(opts){
+    opts = opts || {}; var fit = !!opts.fit;
+    var cars=(window.__CITY_CACHE&&window.__CITY_CACHE.cars)||[];
+    var sel=modelSelections.get(currentCity)||new Set();
+    var filtered = sel.size ? cars.filter(function(v){ return sel.has(v.model); }) : [];
+    var src = map.getSource('cars'); if(src) src.setData(toGeo(filtered));
+    setCount(filtered.length);
+    if(fit && filtered.length){
+      var b=new maplibregl.LngLatBounds();
+      for(var i=0;i<filtered.length;i++){ var v=filtered[i]; b.extend([Number(v.lng),Number(v.lat)]); }
+      try{ map.fitBounds(b,{padding:60,maxZoom:15}); }catch(e){}
+    }
+  }
+
+  function sameList(a,b){
+    a=a||[]; b=b||[];
+    return a.slice().sort().join('|')===b.slice().sort().join('|');
+  }
+
   function buildModelPanelIfNeeded(grouped){
-    const prev=modelOptions.get(currentCity); const need=!prev||!sameList(prev.car,grouped.car)||!sameList(prev.van,grouped.van)||!sameList(prev.scooter,grouped.scooter);
+    var prev=modelOptions.get(currentCity);
+    var need=!prev||!sameList(prev.car,grouped.car)||!sameList(prev.van,grouped.van)||!sameList(prev.scooter,grouped.scooter);
     if(!need) return;
     modelOptions.set(currentCity,grouped);
-    modelSelections.set(currentCity,new Set([...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])]));
-    const carsDiv=document.getElementById('models-cars'),vansDiv=document.getElementById('models-vans'),scootDiv=document.getElementById('models-scooters');
+    modelSelections.set(currentCity,new Set([].concat(grouped.car||[],grouped.van||[],grouped.scooter||[])));
+    var carsDiv=document.getElementById('models-cars'),vansDiv=document.getElementById('models-vans'),scootDiv=document.getElementById('models-scooters');
     function fill(el,arr){
       el.innerHTML='';
-      (arr||[]).sort((a,b)=>a.localeCompare(b,'pl')).forEach(name=>{
-        const id=`${currentCity}-mdl-${name.replace(/\W+/g,'-')}`;
-        const row=document.createElement('div'); row.className='row';
-        row.innerHTML=`<input type="checkbox" id="${id}" checked><label for="${id}">${name}</label>`;
-        const cb=row.querySelector('input');
-        cb.addEventListener('change',()=>{
-          const set=modelSelections.get(currentCity);
+      (arr||[]).sort(function(a,b){return a.localeCompare(b,'pl');}).forEach(function(name){
+        var id=currentCity+'-mdl-'+name.replace(/\W+/g,'-');
+        var row=document.createElement('div'); row.className='row';
+        row.innerHTML='<input type="checkbox" id="'+id+'" checked><label for="'+id+'">'+name+'</label>';
+        var cb=row.querySelector('input');
+        cb.addEventListener('change',function(){
+          var set=modelSelections.get(currentCity);
           if(cb.checked)set.add(name); else set.delete(name);
           lastUIChange=Date.now(); applyFilterAndRender({fit:false});
         });
@@ -471,33 +482,31 @@
     fill(carsDiv,grouped.car); fill(vansDiv,grouped.van); fill(scootDiv,grouped.scooter);
   }
 
-  // select all / none
-  allBtn.addEventListener('click',()=>{
-    const opts=modelOptions.get(currentCity)||{car:[],van:[],scooter:[]};
-    modelSelections.set(currentCity,new Set([...(opts.car||[]),...(opts.van||[]),...(opts.scooter||[])]));
-    document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb=>cb.checked=true);
+  allBtn.addEventListener('click',function(){
+    var opts=modelOptions.get(currentCity)||{car:[],van:[],scooter:[]};
+    modelSelections.set(currentCity,new Set([].concat(opts.car||[],opts.van||[],opts.scooter||[])));
+    Array.prototype.forEach.call(document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input'),function(cb){cb.checked=true;});
     lastUIChange=Date.now(); applyFilterAndRender({fit:false});
   });
-  noneBtn.addEventListener('click',()=>{
+  noneBtn.addEventListener('click',function(){
     modelSelections.set(currentCity,new Set());
-    document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input').forEach(cb=>cb.checked=false);
+    Array.prototype.forEach.call(document.querySelectorAll('#models-cars input,#models-vans input,#models-scooters input'),function(cb){cb.checked=false;});
     lastUIChange=Date.now(); applyFilterAndRender({fit:false});
   });
 
-  // city change
-  citySel.addEventListener('change', ()=>{
-    const nextCity = citySel.value;
+  citySel.addEventListener('change', function(){
+    var nextCity = citySel.value;
     modelSelections.delete(nextCity);
     modelOptions.delete(nextCity);
     lastUIChange = 0;
 
     currentCity = nextCity;
-    const cfg = centers[currentCity] || centers.krakow;
-    const p = new URLSearchParams(location.search); p.set('city', currentCity);
-    history.replaceState(null,'',`?${p.toString()}`);
+    var cfg = centers[currentCity] || centers.krakow;
+    var p = new URLSearchParams(location.search); p.set('city', currentCity);
+    history.replaceState(null,'','?'+p.toString());
 
     clearTimeout(timer);
-    map.getSource('cars')?.setData(emptyFC());
+    var src=map.getSource('cars'); if(src) src.setData(emptyFC());
     setCount(0);
 
     map.easeTo({ center: cfg, zoom: cfg.z });
@@ -505,37 +514,45 @@
     fitCityWidth();
   });
 
-  refreshBtn.addEventListener('click',()=>{
+  refreshBtn.addEventListener('click',function(){
     setRefreshing(true);
-    loadAll(false,{fit:false}).finally(()=> setRefreshing(false));
+    loadAll(false,{fit:false}).finally(function(){ setRefreshing(false); });
   });
 
-  // zones toggles
-  relCB.addEventListener('change',e=>toggleLayer('relocation',e.target.checked));
-  nopCB.addEventListener('change',e=>toggleLayer('nopark',e.target.checked));
-  ogCB .addEventListener('change',e=>toggleLayer('ogarniam',e.target.checked));
-  function toggleLayer(k,on){const v=on?'visible':'none'; map.setLayoutProperty(`${k}-fill`,'visibility',v); map.setLayoutProperty(`${k}-outline`,'visibility',v);}
+  relCB.addEventListener('change',function(e){toggleLayer('relocation',e.target.checked);});
+  nopCB.addEventListener('change',function(e){toggleLayer('nopark',e.target.checked);});
+  ogCB .addEventListener('change',function(e){toggleLayer('ogarniam',e.target.checked);});
+  function toggleLayer(k,on){
+    var vis=on?'visible':'none';
+    try{ map.setLayoutProperty(k+'-fill','visibility',vis); map.setLayoutProperty(k+'-outline','visibility',vis); }catch(e){}
+  }
 
-  async function loadAll(first=false,{fit=false}={}){
-    try{
-      const qs=new URLSearchParams({city:currentCity});
-      const res=await fetch(`${API_CARS}?${qs.toString()}`); const data=await res.json();
-      const cars=Array.isArray(data)?data:(data.cars||[]);
-      const byKind={car:new Set(),van:new Set(),scooter:new Set()};
-      for(const v of cars) if(v&&v.model) (byKind[v.kind||'car']||byKind.car).add(v.model);
-      const grouped={car:[...byKind.car],van:[...byKind.van],scooter:[...byKind.scooter]};
-      const tooSoon=Date.now()-lastUIChange<1500; if(!tooSoon) buildModelPanelIfNeeded(grouped);
-      window.__CITY_CACHE.cars=cars; applyFilterAndRender({fit});
-    }catch(e){console.error(e);}
-    // zones – optional fetch (ignored errors)
-    try{
-      const res=await fetch(`${API_AREAS}?city=${encodeURIComponent(currentCity)}`);
-      const areas=await res.json();
-      if(areas?.relocation) map.getSource('zones-relocation')?.setData(areas.relocation);
-      if(areas?.nopark)     map.getSource('zones-nopark')?.setData(areas.nopark);
-      if(areas?.ogarniam)   map.getSource('zones-ogarniam')?.setData(areas.ogarniam);
-    }catch(e){}
-    clearTimeout(timer); timer=setTimeout(()=>loadAll(false,{fit:false}),20000);
+  function loadAll(first,opts){
+    first = !!first; opts = opts || {}; var fit = !!opts.fit;
+    fetch(API_CARS+'?city='+encodeURIComponent(currentCity))
+      .then(function(r){return r.json();})
+      .then(function(data){
+        var cars = (Object.prototype.toString.call(data)==='[object Array]')?data:(data.cars||[]);
+        var byKind={car:new Set(),van:new Set(),scooter:new Set()};
+        for(var i=0;i<cars.length;i++){ var v=cars[i]; if(v&&v.model){ (byKind[v.kind||'car']||byKind.car).add(v.model); } }
+        var grouped={car:Array.from(byKind.car),van:Array.from(byKind.van),scooter:Array.from(byKind.scooter)};
+        if(Date.now()-lastUIChange>=1500){ buildModelPanelIfNeeded(grouped); }
+        window.__CITY_CACHE.cars=cars; applyFilterAndRender({fit:fit});
+      })
+      .catch(function(e){ console.error(e); })
+      .finally(function(){
+        clearTimeout(timer); timer=setTimeout(function(){ loadAll(false,{fit:false}); },20000);
+      });
+
+    // zones (optional)
+    fetch(API_AREAS+'?city='+encodeURIComponent(currentCity))
+      .then(function(r){return r.json();})
+      .then(function(areas){
+        if(areas && areas.relocation){ var s=map.getSource('zones-relocation'); if(s) s.setData(areas.relocation); }
+        if(areas && areas.nopark){     var s2=map.getSource('zones-nopark'); if(s2) s2.setData(areas.nopark); }
+        if(areas && areas.ogarniam){   var s3=map.getSource('zones-ogarniam'); if(s3) s3.setData(areas.ogarniam); }
+      })
+      .catch(function(){});
   }
 
   window.addEventListener('load', fitCityWidth);
