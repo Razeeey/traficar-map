@@ -29,15 +29,17 @@
   .spacer{flex:1}
   .count{background:var(--panel2);border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
 
-  /* filter panel */
-  .panel{position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;width:240px;box-shadow:var(--shadow)}
+  /* filter panel (popup style) */
+  .panel{position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;width:240px;box-shadow:var(--shadow);max-height:70vh;overflow:auto}
+  .panel.hidden{display:none}
   .panel h4{margin:8px 0 6px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
   .row{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:14px}
   .panel input[type="checkbox"]{width:18px;height:18px;cursor:pointer;accent-color:#7b4bff}
   .panel .small{display:flex;gap:12px;margin:4px 0 2px}
   .panel .small a{font-size:12px;color:#bfc0ca;text-decoration:underline;cursor:pointer}
+  @media (max-width:700px){ .panel{right:50%;transform:translateX(50%);width:92vw} }
 
-  /* popup – white card */
+  /* popup card */
   .maplibregl-popup{max-width:360px !important}
   .maplibregl-popup-content{
     padding:12px;border-radius:14px;background:var(--card);color:var(--ink);
@@ -60,6 +62,12 @@
   .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-2px;margin-left:8px}
   @keyframes spin{to{transform:rotate(360deg)}}
   button[disabled]{opacity:.6;cursor:not-allowed}
+
+  /* overlay & floating button */
+  .overlay{position:fixed;inset:0;z-index:9;background:rgba(0,0,0,.35);backdrop-filter:blur(2px);display:none}
+  .overlay.show{display:block}
+  .fab{position:fixed;right:12px;bottom:12px;z-index:12;width:56px;height:56px;border-radius:14px;background:rgba(23,23,28,.92);color:#e7e8ef;border:1px solid rgba(255,255,255,.10);box-shadow:0 12px 30px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .fab:hover{border-color:rgba(255,255,255,.25)}
 </style>
 </head>
 <body>
@@ -86,8 +94,8 @@
   <div id="count" class="count">0 cars</div>
 </div>
 
-<!-- Right filter panel -->
-<div class="panel">
+<!-- Filter panel (hidden by default) -->
+<div id="filtersPanel" class="panel hidden">
   <h4>Osobowe</h4>
   <div id="models-cars"></div>
   <h4>Dostawcze</h4>
@@ -101,6 +109,16 @@
   <div class="row"><input type="checkbox" id="toggle-nop" checked><label for="toggle-nop">Zakaz parkowania</label></div>
   <div class="row"><input type="checkbox" id="toggle-og" checked><label for="toggle-og">Ogarniam</label></div>
 </div>
+
+<!-- Overlay + Floating Filters Button -->
+<div id="overlay" class="overlay" aria-hidden="true"></div>
+<button id="filterBtn" class="fab" aria-controls="filtersPanel" aria-expanded="false" title="Filtry">
+  <svg viewBox="0 0 24 24" width="26" height="26" fill="none" aria-hidden="true">
+    <path d="M12 3 3 7l9 4 9-4-9-4Z" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7" />
+    <path d="m3 12 9 4 9-4" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7"/>
+    <path d="m3 17 9 4 9-4" stroke="currentColor" stroke-opacity=".85" stroke-width="1.7"/>
+  </svg>
+</button>
 
 <script>
 (function(){
@@ -130,7 +148,17 @@
   const nopCB = document.getElementById('toggle-nop');
   const ogCB  = document.getElementById('toggle-og');
 
+  const panelEl   = document.getElementById('filtersPanel');
+  const overlayEl = document.getElementById('overlay');
+  const filterBtn = document.getElementById('filterBtn');
+
   const setRefreshing = (on)=>{ refreshBtn.disabled = !!on; spinEl.style.display = on?'inline-block':'none'; };
+
+  function openFilters(){ panelEl.classList.remove('hidden'); overlayEl.classList.add('show'); filterBtn.setAttribute('aria-expanded','true'); }
+  function closeFilters(){ panelEl.classList.add('hidden'); overlayEl.classList.remove('show'); filterBtn.setAttribute('aria-expanded','false'); }
+  filterBtn.addEventListener('click', ()=>{ panelEl.classList.contains('hidden') ? openFilters() : closeFilters(); });
+  overlayEl.addEventListener('click', closeFilters);
+  window.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeFilters(); });
 
   citySel.value = initialCity;
   let currentCity = citySel.value;
@@ -156,11 +184,11 @@
     return { webp: `${base}.webp`, jpg: `${base}.jpg` };
   }
 
-  /* ---------- draw icons (colored pins + cluster pies) ---------- */
+  /* ---------- pins & cluster pies ---------- */
   function pinImageData(kind){
     const color =
       kind === 'van'     ? '#1d4ed8' :
-      kind === 'scooter' ? '#2dd4bf' : '#7b4bff'; // car default
+      kind === 'scooter' ? '#2dd4bf' : '#7b4bff';
 
     const size = 64, r = 16;
     const cx = size/2, cy = size/2 - 2;
@@ -169,20 +197,14 @@
     const g = cvs.getContext('2d');
 
     // shadow
-    g.beginPath();
-    g.ellipse(cx, cy + r + 10, r*0.9, r*0.45, 0, 0, Math.PI*2);
+    g.beginPath(); g.ellipse(cx, cy + r + 10, r*0.9, r*0.45, 0, 0, Math.PI*2);
     g.fillStyle = 'rgba(0,0,0,.45)'; g.fill();
 
-    // head (circle)
-    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2);
-    g.fillStyle = color; g.fill();
+    // head + pointer
+    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.fillStyle = color; g.fill();
+    g.beginPath(); g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14); g.closePath(); g.fillStyle = color; g.fill();
 
-    // pointer
-    g.beginPath();
-    g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14);
-    g.closePath(); g.fillStyle = color; g.fill();
-
-    // subtle border
+    // border
     g.lineWidth = 2; g.strokeStyle = '#1a1a1a';
     g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.stroke();
     g.beginPath(); g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14); g.closePath(); g.stroke();
@@ -190,21 +212,20 @@
     // white pictograms
     g.fillStyle = '#fff';
     if (kind === 'van') {
-      g.fillRect(cx-11, cy-6, 14, 10);            // box
-      g.fillRect(cx+3,  cy-4,  8,  8);            // cab
+      g.fillRect(cx-11, cy-6, 14, 10);
+      g.fillRect(cx+3,  cy-4,  8,  8);
       g.beginPath(); g.arc(cx-7, cy+7, 3, 0, Math.PI*2); g.arc(cx+7, cy+7, 3, 0, Math.PI*2); g.fill();
     } else if (kind === 'scooter') {
-      g.fillRect(cx-8, cy+3, 16, 2.5);            // deck
+      g.fillRect(cx-8, cy+3, 16, 2.5);
       g.beginPath(); g.arc(cx-10, cy+8, 3, 0, Math.PI*2); g.arc(cx+10, cy+8, 3, 0, Math.PI*2); g.fill();
-      g.fillRect(cx+2, cy-6, 2.5, 10);            // stem
-      g.fillRect(cx-1, cy-7.5, 8, 2.5);           // handle
+      g.fillRect(cx+2, cy-6, 2.5, 10);
+      g.fillRect(cx-1, cy-7.5, 8, 2.5);
     } else {
-      g.fillRect(cx-10, cy-5, 20, 9);             // car body
+      g.fillRect(cx-10, cy-5, 20, 9);
       g.beginPath(); g.arc(cx-6, cy+6.5, 3, 0, Math.PI*2); g.arc(cx+6, cy+6.5, 3, 0, Math.PI*2); g.fill();
     }
     return g.getImageData(0,0,size,size);
   }
-
   function pieImageData(c,v,s){
     const size=64*2,r=size/2,cvs=document.createElement('canvas');cvs.width=size;cvs.height=size;const g=cvs.getContext('2d');
     g.beginPath();g.arc(r,r,r-4,0,Math.PI*2);g.fillStyle='#3e3e45';g.fill();
@@ -243,7 +264,7 @@
       }
     });
 
-    // cluster pie icons
+    // cluster pies
     const PIE_CACHE = new Set();
     map.on('styleimagemissing', (e)=>{
       const m=/^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id); if(!m||PIE_CACHE.has(e.id))return;
@@ -268,7 +289,7 @@
               'text-font':['Open Sans Semibold','Arial Unicode MS Bold'],'text-offset':[0,0],'text-allow-overlap':true},
       paint:{'text-color':'#ffffff','text-halo-color':'#111','text-halo-width':1.2}});
 
-    // colored pins for single vehicles
+    // colored pins per kind, scaled by zoom
     map.addLayer({
       id: 'cars-pin',
       type: 'symbol',
@@ -280,19 +301,18 @@
           'scooter', 'pin-scooter',
           /* default */ 'pin-car'
         ],
-        // bigger pins as you zoom in
         'icon-size': [
           'interpolate', ['linear'], ['zoom'],
-          10, 0.9,   // far out
+          10, 0.9,
           12, 1.2,
           14, 1.6,
-          16, 2.0,   // neighborhood zoom
-          18, 2.4    // very close
+          16, 2.0,
+          18, 2.4
         ],
         'icon-allow-overlap': true
       }
     });
-    
+
     // overlays
     map.addSource('zones-relocation',{type:'geojson',data:emptyFC()});
     map.addSource('zones-nopark',{type:'geojson',data:emptyFC()});
@@ -372,7 +392,6 @@
     modelOptions.set(currentCity,grouped);
     // init selection to "all checked"
     modelSelections.set(currentCity,new Set([...(grouped.car||[]),...(grouped.van||[]),...(grouped.scooter||[])]));
-
     const carsDiv=document.getElementById('models-cars'),vansDiv=document.getElementById('models-vans'),scootDiv=document.getElementById('models-scooters');
     function fill(el,arr){
       el.innerHTML='';
@@ -409,7 +428,7 @@
   citySel.addEventListener('change', ()=>{
     const nextCity = citySel.value;
 
-    modelSelections.delete(nextCity);  // forget any previous custom set for the target city
+    modelSelections.delete(nextCity);  // forget previous custom set for the target city
     modelOptions.delete(nextCity);     // force re-build of the checkbox list
     lastUIChange = 0;
 
