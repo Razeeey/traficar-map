@@ -16,14 +16,17 @@
     --panel:#17171c; --panel2:#1f1f26; --text:#f5f6fa; --muted:#a7a7b4;
     --radius:12px; --shadow:0 10px 30px rgba(0,0,0,.35);
     --ink:#1a1b1e; --ink2:#6b7280; --card:#ffffff; --divider:#e5e7eb;
+    --accent:#7b4bff;
   }
   *{box-sizing:border-box}
   body{margin:0;background:#0c0c10;color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif}
   #map{position:fixed;inset:0}
 
+  /* MapLibre cursor behavior */
   .maplibregl-canvas{cursor:default !important;-webkit-tap-highlight-color:transparent}
   .maplibregl-canvas.dragging{cursor:grabbing !important}
 
+  /* top bar (kept background only) */
   .topbar{
     position:fixed;left:12px;right:12px;top:12px;z-index:10;
     display:flex;align-items:center;gap:10px;flex-wrap:wrap;
@@ -31,33 +34,37 @@
     border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);
     padding:8px 10px;box-shadow:var(--shadow)
   }
-  .pill,.chip,.count{
+  .spacer{flex:1}
+
+  /* CITY SELECT — no box */
+  .city-plain{display:flex;align-items:center;gap:8px;padding:0 4px}
+  .city-plain img{width:22px;height:22px;display:block;filter:drop-shadow(0 0 0 rgba(0,0,0,0.2))}
+  .city-plain select{
+    appearance:auto;-webkit-appearance:menulist;
+    background:none;border:none;color:var(--text);font-weight:700;
+    padding:4px 22px 4px 0; /* leave space for native arrow */
+    height:34px;cursor:pointer;outline:none;box-shadow:none;width:auto;max-width:60vw
+  }
+  .city-plain select:focus{outline:none}
+  .city-plain select option{color:#111;background:#fff}
+
+  /* chips on the right */
+  .chip,.count{
     height:40px;border-radius:12px;display:inline-flex;align-items:center;gap:10px;
     padding:0 12px;border:1px solid rgba(255,255,255,.08);background:var(--panel2);
     color:var(--text);font-weight:600
   }
-  .pill:hover,.chip:hover{border-color:rgba(255,255,255,.18)}
-  .pill button{border:0;background:transparent;color:inherit;font:inherit;cursor:pointer}
   .chip{min-width:44px;justify-content:center;cursor:pointer}
   .chip svg{display:block}
   .count{border-radius:10px;cursor:default;user-select:none}
-  .spacer{flex:1}
 
-  .selectwrap{position:relative;display:flex;align-items:center}
-  .selectwrap img{
-    position:absolute;left:12px;top:50%;transform:translateY(-50%);
-    width:24px;height:24px;opacity:.95;pointer-events:none
+  @media (max-width:700px){
+    .chip,.count{height:36px;border-radius:10px;padding:0 10px;font-size:14px}
+    .city-plain img{width:22px;height:22px}
+    .city-plain select{height:32px}
   }
-  .selectwrap select{
-    appearance:auto;-webkit-appearance:menulist;
-    padding:8px 28px 8px 52px;
-    height:40px;border-radius:12px;border:0;background:transparent;color:var(--text);
-    cursor:pointer;outline:none;box-shadow:none;width:auto;min-width:120px;max-width:220px
-  }
-  .selectwrap select:focus{outline:none;box-shadow:none}
-  .selectwrap select:focus-visible{outline:0}
-  .selectwrap select option{color:#111;background:#fff}
 
+  /* filter panel */
   .panel{
     position:fixed;right:12px;top:64px;z-index:11;background:rgba(23,23,28,.92);
     backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08);border-radius:12px;
@@ -68,35 +75,25 @@
   .hdr h4{margin:0;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
   .closebtn{width:28px;height:28px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:transparent;color:#e8e9f1;display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;cursor:pointer}
   .row{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:14px}
-  .panel input[type="checkbox"]{width:18px;height:18px;cursor:pointer;accent-color:#7b4bff}
+  .panel input[type="checkbox"]{width:18px;height:18px;cursor:pointer;accent-color:var(--accent)}
   .panel .small{display:flex;gap:12px;margin:4px 0 2px}
   .panel .small a{font-size:12px;color:#bfc0ca;text-decoration:underline;cursor:pointer}
 
-  @media (max-width:700px){
-    .pill,.chip,.count{height:36px;border-radius:10px;padding:0 10px;font-size:14px}
-    .selectwrap img{left:10px;width:24px;height:24px}
-    .selectwrap select{height:36px;padding:6px 24px 6px 48px;min-width:120px;max-width:200px}
-    .count{order:3;margin-left:auto}
-    #filterBtn{order:4}
-  }
-
+  /* popup card */
   .maplibregl-popup{max-width:360px !important}
   .maplibregl-popup-content{padding:12px;border-radius:14px;background:var(--card);color:var(--ink);box-shadow:0 18px 50px rgba(0,0,0,.45);border:1px solid #eceff3}
   .maplibregl-popup-close-button{color:#444}
-  .badge{background:#7b4bff;color:#fff;padding:4px 10px;border-radius:10px;font-weight:800;display:inline-block;min-width:52px;text-align:center}
+  .badge{background:var(--accent);color:#fff;padding:4px 10px;border-radius:10px;font-weight:800;display:inline-block;min-width:52px;text-align:center}
   .muted{color:var(--ink2)}
   .infocard{min-width:300px;max-width:340px}
   .carimg{width:100%;height:auto;max-height:150px;object-fit:contain;border-radius:10px;background:transparent;margin-bottom:8px;display:block}
   .title{font-weight:800;font-size:16px;color:var(--ink)}
   .divider{height:1px;background:var(--divider);margin:6px 0 8px}
 
-  .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-2px;margin-left:8px}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  button[disabled]{opacity:.6;cursor:not-allowed}
-
+  /* hover tag */
   .hoverTag{
     position:absolute;z-index:12;pointer-events:none;transform:translate(-50%,-140%);
-    background:rgba(23,23,28,.92);border:1px solid rgba(255,255,255,.1);
+    background:rgba(23,23,28,.92);border:1px solid rgba(255,255,255,.12);
     color:#fff;padding:4px 8px;border-radius:8px;font-size:12px;white-space:nowrap;
   }
 </style>
@@ -105,8 +102,8 @@
 <div id="map"></div>
 
 <div class="topbar">
-  <div class="pill selectwrap">
-    <img src="/img/location-icon.png" alt="" />
+  <div class="city-plain">
+    <img src="/img/location-icon.png" alt="">
     <select id="city">
       <option value="krakow">Kraków</option>
       <option value="warszawa">Warszawa</option>
@@ -120,8 +117,9 @@
       <option value="rzeszow">Rzeszów</option>
     </select>
   </div>
-  <div class="pill"><button id="refresh">Refresh <span id="spin" class="spinner" style="display:none"></span></button></div>
+
   <div class="spacer"></div>
+
   <div id="count" class="count">0 cars</div>
   <button id="filterBtn" class="chip" aria-controls="filtersPanel" aria-expanded="false" title="Filtry">
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
@@ -132,6 +130,7 @@
   </button>
 </div>
 
+<!-- Filter panel -->
 <div id="filtersPanel" class="panel hidden">
   <div class="hdr">
     <h4>OSOBOWE</h4>
@@ -172,28 +171,25 @@
   const params = new URLSearchParams(location.search);
   const initialCity = centers[params.get('city')] ? params.get('city') : 'krakow';
 
+  // DOM
   var citySel   = document.getElementById('city');
-  var refreshBtn= document.getElementById('refresh');
-  var spinEl    = document.getElementById('spin');
   var countEl   = document.getElementById('count');
   var filterBtn = document.getElementById('filterBtn');
   var panelEl   = document.getElementById('filtersPanel');
   var closeBtn  = document.getElementById('closeFilters');
   var hoverTag  = document.getElementById('hoverTag');
-
   var allBtn = document.getElementById('all');
   var noneBtn= document.getElementById('none');
   var relCB  = document.getElementById('toggle-rel');
   var nopCB  = document.getElementById('toggle-nop');
   var ogCB   = document.getElementById('toggle-og');
 
-  function setRefreshing(on){ refreshBtn.disabled = !!on; spinEl.style.display = on?'inline-block':'none'; }
-
   function openFilters(){ panelEl.classList.remove('hidden'); filterBtn.setAttribute('aria-expanded','true'); }
   function closeFilters(){ panelEl.classList.add('hidden');  filterBtn.setAttribute('aria-expanded','false'); }
   filterBtn.addEventListener('click', function(){ panelEl.classList.contains('hidden') ? openFilters() : closeFilters(); });
   closeBtn.addEventListener('click', closeFilters);
 
+  // close panel when tapping map background
   var clickingMap = false;
   document.addEventListener('pointerdown', function(e){
     var mapEl = document.querySelector('.maplibregl-canvas');
@@ -206,61 +202,32 @@
   citySel.value = initialCity;
   var currentCity = citySel.value;
 
-  function fitCityWidth(){
-    var text = citySel.options[citySel.selectedIndex].text || '';
-    var probe = document.createElement('span');
-    var cs = getComputedStyle(citySel);
-    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:'+cs.fontSize+' '+cs.fontFamily+';font-weight:'+cs.fontWeight;
-    probe.textContent = text;
-    document.body.appendChild(probe);
-    var w = probe.getBoundingClientRect().width;
-    document.body.removeChild(probe);
-    var pad = 52 + 28;
-    var min = 120, max = (window.matchMedia && matchMedia('(max-width:700px)').matches) ? 200 : 220;
-    citySel.style.width = Math.min(max, Math.max(min, Math.ceil(w + pad))) + 'px';
-  }
-
-  var modelSelections = new Map();
-  var modelOptions    = new Map();
-  var lastUIChange = 0;
-
-  function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
-  var CUSTOM_FILE_BY_MODEL = {
-    'renault-arkana':  'renault-arkana-traficar',
-    'renault-clio-v':  'renault-clio-traficar',
-    'dacia-sandero':   'dacia-sandero-traficar',
-    'dacia-dokker':    'dacia-dokker-traficar',
-    'renault-express': 'renault-express-traficar',
-    'renault-master':  'renault-master-traficar',
-    'navee-d1-pro':    'NAVEE-D1-PRO-traficar'
-  };
-  function modelImage(model){
-    var s = slug(model);
-    var base = CUSTOM_FILE_BY_MODEL[s] ? '/img/'+CUSTOM_FILE_BY_MODEL[s] : '/img/'+s;
-    return { webp: base + '.webp', jpg: base + '.jpg' };
-  }
-
+  /* ---- images for pins ---- */
   function loadPng(url){
     return new Promise(function(resolve, reject){
       var img = new Image(); img.decoding='async';
       img.onload = function(){ resolve(img); }; img.onerror = reject; img.src=url;
     });
   }
-
   function pinImageData(kind, iconImg){
     var color = kind==='van' ? '#1d4ed8' : (kind==='scooter' ? '#2dd4bf' : '#7b4bff');
     var size=64, r=16, cx=size/2, cy=size/2-2;
     var cvs=document.createElement('canvas'); cvs.width=size; cvs.height=size;
     var g=cvs.getContext('2d');
 
+    // shadow
     g.beginPath(); g.ellipse(cx, cy + r + 10, r*0.9, r*0.45, 0, 0, Math.PI*2); g.fillStyle='rgba(0,0,0,.45)'; g.fill();
+    // bubble
     g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.fillStyle=color; g.fill();
+    // tail
     g.beginPath(); g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14); g.closePath(); g.fillStyle=color; g.fill();
+    // stroke
     g.lineWidth=2; g.strokeStyle='#1a1a1a';
     g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.stroke();
     g.beginPath(); g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14); g.closePath(); g.stroke();
+    // pictogram (car bigger only)
     if(iconImg){
-      var ICON = (kind==='car') ? 28 : 22;
+      var ICON = (kind==='car') ? 34 : 22; /* << car bumped */
       g.drawImage(iconImg, cx-ICON/2, cy-ICON/2, ICON, ICON);
     }
     return g.getImageData(0,0,size,size);
@@ -277,6 +244,24 @@
     return g.getImageData(0,0,size,size);
   }
 
+  /* ---- model image for popup ---- */
+  function slug(s){ return String(s||'').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9\-]/g,''); }
+  var CUSTOM_FILE_BY_MODEL = {
+    'renault-arkana':  'renault-arkana-traficar',
+    'renault-clio-v':  'renault-clio-traficar',
+    'dacia-sandero':   'dacia-sandero-traficar',
+    'dacia-dokker':    'dacia-dokker-traficar',
+    'renault-express': 'renault-express-traficar',
+    'renault-master':  'renault-master-traficar',
+    'navee-d1-pro':    'NAVEE-D1-PRO-traficar'
+  };
+  function modelImage(model){
+    var s = slug(model);
+    var base = CUSTOM_FILE_BY_MODEL[s] ? '/img/'+CUSTOM_FILE_BY_MODEL[s] : '/img/'+s;
+    return { webp: base + '.webp', jpg: base + '.jpg' };
+  }
+
+  /* ---- map ---- */
   var map = new maplibregl.Map({
     container:'map',
     style:'https://api.maptiler.com/maps/dataviz-dark/style.json?key='+MAPTILER_KEY,
@@ -289,38 +274,8 @@
   map.on('dragstart', function(){ var c=document.querySelector('.maplibregl-canvas'); if(c) c.classList.add('dragging'); });
   map.on('dragend',   function(){ var c=document.querySelector('.maplibregl-canvas'); if(c) c.classList.remove('dragging'); });
 
-  map.on('click', function(e){
-    var feats = map.queryRenderedFeatures(e.point, { layers:['cars-pin'] });
-    if (feats && feats.length){
-      var f=feats[0]; var v=f.properties; var coords=f.geometry.coordinates;
-      var lng=coords[0], lat=coords[1];
-      var badge=v.number?(v.number):(v.id?String(v.id).slice(-4):''); var plate=v.plate||'';
-      var pct=(v.pct!=null)?(v.pct+'%'):'—'; var range=(v.rangeKm!=null)?(' ('+v.rangeKm+' km)'):'';
-      var addr=v.address||''; var apple='https://maps.apple.com/?ll='+lat+','+lng+'&q='+encodeURIComponent(v.model||'Car');
-      var img=modelImage(v.model);
-      var titleEsc = String(v.model||'Vehicle').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-      var html=
-        '<div class="infocard">'+
-          '<img class="carimg" loading="lazy" src="'+img.webp+'" '+
-          'onerror="if(this.dataset.step!==\'jpg\'){this.dataset.step=\'jpg\';this.src=\''+img.jpg+'\';}else{this.onerror=null;this.style.display=\'none\';}" '+
-          'alt="'+titleEsc+'">'+
-          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+
-            '<span class="badge">'+badge+'</span>'+
-            '<div class="title">'+titleEsc+'</div>'+
-          '</div>'+
-          '<div class="muted" style="margin:-2px 0 8px">'+(plate||'&nbsp;')+'</div>'+
-          '<div class="muted" style="margin:6px 0">⛽ <b>'+pct+range+'</b></div>'+
-          '<div class="muted" style="margin:6px 0">📍 '+addr+'</div>'+
-          '<div class="divider"></div>'+
-          '<div style="margin:8px 0"><a href="'+apple+'" target="_blank" rel="noopener">Open in Apple Maps</a></div>'+
-        '</div>';
-      new maplibregl.Popup({closeButton:true,offset:12}).setLngLat([lng,lat]).setHTML(html).addTo(map);
-    }else{
-      if(!panelEl.classList.contains('hidden')) closeFilters();
-    }
-  });
-
   map.on('load', function(){
+    // pictograms
     Promise.all([loadPng('/img/car-icon.png'),loadPng('/img/truck-icon.png'),loadPng('/img/scooter-icon.png')]).then(function(imgs){
       try { map.addImage('pin-car',     pinImageData('car',     imgs[0]), { pixelRatio:2 }); } catch(e){}
       try { map.addImage('pin-van',     pinImageData('van',     imgs[1]), { pixelRatio:2 }); } catch(e){}
@@ -328,7 +283,7 @@
     });
 
     map.addSource('cars', {
-      type:'geojson', data: emptyFC(),
+      type:'geojson', data: {type:'FeatureCollection',features:[]},
       cluster:true, clusterRadius:64, clusterMaxZoom:14,
       clusterProperties:{
         car:["+",["case",["==",["get","kind"],"car"],1,0]],
@@ -341,14 +296,6 @@
     map.on('styleimagemissing', function(e){
       var m=/^pie_(\d+)_(\d+)_(\d+)$/.exec(e.id); if(!m||PIE_CACHE[e.id]) return;
       try{ map.addImage(e.id, pieImageData(+m[1],+m[2],+m[3]), { pixelRatio:2 }); PIE_CACHE[e.id]=1; map.triggerRepaint(); }catch(err){}
-    });
-    map.on('idle', function(){
-      var feats=map.queryRenderedFeatures({layers:['clusters-pie']});
-      for(var i=0;i<feats.length;i++){
-        var f=feats[i];
-        var id='pie_'+((f.properties.car|0))+'_'+((f.properties.van|0))+'_'+((f.properties.scooter|0));
-        if(!map.hasImage(id)){ try{ map.addImage(id, pieImageData(f.properties.car|0,f.properties.van|0,f.properties.scooter|0), { pixelRatio:2 }); }catch(err){} }
-      }
     });
 
     map.addLayer({ id:'clusters-bg', type:'circle', source:'cars', filter:['has','point_count'],
@@ -378,9 +325,59 @@
       }
     });
 
-    map.addSource('zones-relocation',{type:'geojson',data:emptyFC()});
-    map.addSource('zones-nopark',{type:'geojson',data:emptyFC()});
-    map.addSource('zones-ogarniam',{type:'geojson',data:emptyFC()});
+    // pointer + hover tag on pins (reliable)
+    map.on('mouseenter','cars-pin',function(e){
+      map.getCanvas().style.cursor='pointer';
+      if (!('ontouchstart' in window) && e.features && e.features.length){
+        var v=e.features[0].properties;
+        var fleet = v.number ? v.number : (v.id?String(v.id).slice(-4):'');
+        hoverTag.textContent = (v.model||'Vehicle')+' • '+fleet; // exact format
+        hoverTag.style.display='block';
+      }
+    });
+    map.on('mousemove','cars-pin',function(e){
+      if (!('ontouchstart' in window) && hoverTag.style.display==='block'){
+        hoverTag.style.left = e.point.x+'px';
+        hoverTag.style.top  = e.point.y+'px';
+      }
+    });
+    map.on('mouseleave','cars-pin',function(){
+      map.getCanvas().style.cursor='default';
+      hoverTag.style.display='none';
+    });
+
+    // click to open popup
+    map.on('click','cars-pin',function(e){
+      if(!(e.features && e.features.length)) return;
+      var f=e.features[0]; var v=f.properties; var coords=f.geometry.coordinates;
+      var lng=coords[0], lat=coords[1];
+      var badge=v.number?(v.number):(v.id?String(v.id).slice(-4):''); var plate=v.plate||'';
+      var pct=(v.pct!=null)?(v.pct+'%'):'—'; var range=(v.rangeKm!=null)?(' ('+v.rangeKm+' km)'):'';
+      var addr=v.address||''; var apple='https://maps.apple.com/?ll='+lat+','+lng+'&q='+encodeURIComponent(v.model||'Car');
+      var img=modelImage(v.model);
+      var titleEsc = String(v.model||'Vehicle').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      var html=
+        '<div class="infocard">'+
+          '<img class="carimg" loading="lazy" src="'+img.webp+'" '+
+          'onerror="if(this.dataset.step!==\'jpg\'){this.dataset.step=\'jpg\';this.src=\''+img.jpg+'\';}else{this.onerror=null;this.style.display=\'none\';}" '+
+          'alt="'+titleEsc+'">'+
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+
+            '<span class="badge">'+badge+'</span>'+
+            '<div class="title">'+titleEsc+'</div>'+
+          '</div>'+
+          '<div class="muted" style="margin:-2px 0 8px">'+(plate||'&nbsp;')+'</div>'+
+          '<div class="muted" style="margin:6px 0">⛽ <b>'+pct+range+'</b></div>'+
+          '<div class="muted" style="margin:6px 0">📍 '+addr+'</div>'+
+          '<div class="divider"></div>'+
+          '<div style="margin:8px 0"><a href="'+apple+'" target="_blank" rel="noopener">Open in Apple Maps</a></div>'+
+        '</div>';
+      new maplibregl.Popup({closeButton:true,offset:12}).setLngLat([lng,lat]).setHTML(html).addTo(map);
+    });
+
+    // zone sources/layers
+    map.addSource('zones-relocation',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+    map.addSource('zones-nopark',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+    map.addSource('zones-ogarniam',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
     map.addLayer({id:'relocation-fill',type:'fill',source:'zones-relocation',paint:{'fill-color':'#ffd500','fill-opacity':0.22}});
     map.addLayer({id:'relocation-outline',type:'line',source:'zones-relocation',paint:{'line-color':'#ffd500','line-width':2}});
     map.addLayer({id:'nopark-fill',type:'fill',source:'zones-nopark',paint:{'fill-color':'#ff4d4d','fill-opacity':0.28}});
@@ -388,31 +385,10 @@
     map.addLayer({id:'ogarniam-fill',type:'fill',source:'zones-ogarniam',paint:{'fill-color':'#a56cff','fill-opacity':0.16}});
     map.addLayer({id:'ogarniam-outline',type:'line',source:'zones-ogarniam',paint:{'line-color':'#a56cff','line-width':2}});
 
-    function updateHover(e){
-      var feats = map.queryRenderedFeatures(e.point, { layers:['cars-pin'] });
-      var canvas = map.getCanvas();
-      if (feats && feats.length){
-        canvas.style.cursor = 'pointer';
-        if (!('ontouchstart' in window)){
-          var v=feats[0].properties;
-          var fleet = v.number ? v.number : (v.id?String(v.id).slice(-4):'');
-          hoverTag.textContent = (v.model||'Vehicle')+' • '+fleet;
-          hoverTag.style.left = e.point.x+'px';
-          hoverTag.style.top  = e.point.y+'px';
-          hoverTag.style.display = 'block';
-        }
-      }else{
-        canvas.style.cursor = 'default';
-        hoverTag.style.display = 'none';
-      }
-    }
-    map.on('mousemove', updateHover);
-    map.on('mouseout', function(){ hoverTag.style.display='none'; map.getCanvas().style.cursor='default'; });
-
     loadAll(true,{fit:true});
-    fitCityWidth();
   });
 
+  /* ---- data & filters ---- */
   var timer=null; window.__CITY_CACHE={cars:[]};
   function setCount(n){ countEl.textContent = n+' '+(n===1?'car':'cars'); }
   function emptyFC(){ return {type:'FeatureCollection',features:[]}; }
@@ -437,6 +413,10 @@
       })
     };
   }
+
+  var modelSelections = new Map();
+  var modelOptions    = new Map();
+  var lastUIChange = 0;
 
   function applyFilterAndRender(opts){
     opts = opts || {}; var fit = !!opts.fit;
@@ -511,21 +491,16 @@
 
     map.easeTo({ center: cfg, zoom: cfg.z });
     loadAll(true, { fit:true });
-    fitCityWidth();
   });
 
-  refreshBtn.addEventListener('click',function(){
-    setRefreshing(true);
-    loadAll(false,{fit:false}).finally(function(){ setRefreshing(false); });
-  });
-
-  relCB.addEventListener('change',function(e){toggleLayer('relocation',e.target.checked);});
-  nopCB.addEventListener('change',function(e){toggleLayer('nopark',e.target.checked);});
-  ogCB .addEventListener('change',function(e){toggleLayer('ogarniam',e.target.checked);});
+  // zone toggles
   function toggleLayer(k,on){
     var vis=on?'visible':'none';
     try{ map.setLayoutProperty(k+'-fill','visibility',vis); map.setLayoutProperty(k+'-outline','visibility',vis); }catch(e){}
   }
+  relCB.addEventListener('change',function(e){toggleLayer('relocation',e.target.checked);});
+  nopCB.addEventListener('change',function(e){toggleLayer('nopark',e.target.checked);});
+  ogCB .addEventListener('change',function(e){toggleLayer('ogarniam',e.target.checked);});
 
   function loadAll(first,opts){
     first = !!first; opts = opts || {}; var fit = !!opts.fit;
@@ -555,8 +530,6 @@
       .catch(function(){});
   }
 
-  window.addEventListener('load', fitCityWidth);
-  window.addEventListener('resize', fitCityWidth);
 })();
 </script>
 </body>
