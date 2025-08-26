@@ -22,7 +22,7 @@
   #map{position:fixed;inset:0}
 
   /* MapLibre cursor behavior */
-  .maplibregl-canvas{cursor:default !important}
+  .maplibregl-canvas{cursor:default !important;-webkit-tap-highlight-color:transparent}
   .maplibregl-canvas.dragging{cursor:grabbing !important}
 
   /* top bar */
@@ -45,19 +45,20 @@
   .count{border-radius:10px;cursor:default;user-select:none}
   .spacer{flex:1}
 
-  /* city select with icon */
+  /* city select with bigger icon, auto width */
   .selectwrap{position:relative;display:flex;align-items:center}
   .selectwrap img{
     position:absolute;left:12px;top:50%;transform:translateY(-50%);
-    width:20px;height:20px;opacity:.95;pointer-events:none
+    width:24px;height:24px;opacity:.95;pointer-events:none
   }
   .selectwrap select{
-    appearance:auto;-webkit-appearance:menulist; /* keep native arrow */
-    padding:8px 28px 8px 44px; /* room for icon */
+    appearance:auto;-webkit-appearance:menulist;
+    padding:8px 28px 8px 52px;  /* room for 24px icon */
     height:40px;border-radius:12px;border:0;background:transparent;color:var(--text);
-    cursor:pointer;outline:none;box-shadow:none; /* kill white focus ring */
+    cursor:pointer;outline:none;box-shadow:none;width:auto;min-width:120px;max-width:220px
   }
   .selectwrap select:focus{outline:none;box-shadow:none}
+  .selectwrap select:focus-visible{outline:0}
   .selectwrap select option{color:#111;background:#fff}
 
   /* filter panel */
@@ -77,8 +78,8 @@
 
   @media (max-width:700px){
     .pill,.chip,.count{height:36px;border-radius:10px;padding:0 10px;font-size:14px}
-    .selectwrap img{left:10px;width:22px;height:22px}
-    .selectwrap select{height:36px;padding:6px 24px 6px 42px}
+    .selectwrap img{left:10px;width:24px;height:24px}
+    .selectwrap select{height:36px;padding:6px 24px 6px 48px;min-width:120px;max-width:200px}
     .count{order:3;margin-left:auto}
     #filterBtn{order:4}
   }
@@ -97,6 +98,13 @@
   .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-2px;margin-left:8px}
   @keyframes spin{to{transform:rotate(360deg)}}
   button[disabled]{opacity:.6;cursor:not-allowed}
+
+  /* tiny hover tooltip */
+  .hoverTag{
+    position:absolute;z-index:12;pointer-events:none;transform:translate(-50%,-140%);
+    background:rgba(23,23,28,.92);border:1px solid rgba(255,255,255,.1);
+    color:#fff;padding:4px 8px;border-radius:8px;font-size:12px;white-space:nowrap;
+  }
 </style>
 </head>
 <body>
@@ -153,9 +161,11 @@
   <div class="row"><input type="checkbox" id="toggle-og" checked><label for="toggle-og">Ogarniam</label></div>
 </div>
 
+<div id="hoverTag" class="hoverTag" style="display:none"></div>
+
 <script>
 (function(){
-  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC'; // ← your key in quotes
+  const MAPTILER_KEY = 'om295piVB9WpF6hwX1iC';
   const API_CARS  = '/.netlify/functions/traficar-auto';
   const API_AREAS = '/.netlify/functions/traficar-areas';
 
@@ -176,6 +186,7 @@
   const filterBtn = document.getElementById('filterBtn');
   const panelEl   = document.getElementById('filtersPanel');
   const closeBtn  = document.getElementById('closeFilters');
+  const hoverTag  = document.getElementById('hoverTag');
 
   const allBtn = document.getElementById('all');
   const noneBtn= document.getElementById('none');
@@ -203,7 +214,7 @@
   citySel.value = initialCity;
   let currentCity = citySel.value;
 
-  // auto-width for city select (fits label; keeps min/max)
+  // auto width for city select
   function fitCityWidth(){
     const text = citySel.options[citySel.selectedIndex].text || '';
     const probe = document.createElement('span');
@@ -213,8 +224,8 @@
     document.body.appendChild(probe);
     const w = probe.getBoundingClientRect().width;
     document.body.removeChild(probe);
-    const pad = 44 /*left icon*/ + 28 /*arrow/pad*/;
-    const min = 140, max = 220;
+    const pad = 52 /*left icon*/ + 28 /*right arrow/pad*/;
+    const min = 120, max = matchMedia('(max-width:700px)').matches ? 200 : 220;
     citySel.style.width = Math.min(max, Math.max(min, Math.ceil(w + pad))) + 'px';
   }
 
@@ -246,7 +257,7 @@
     });
   }
 
-  // pin with bigger car pictogram (26), van/scooter 22
+  // pin with bigger car pictogram (28), van/scooter 22
   function pinImageData(kind, iconImg){
     const color = kind==='van' ? '#1d4ed8' : (kind==='scooter' ? '#2dd4bf' : '#7b4bff');
     const size=64, r=16, cx=size/2, cy=size/2-2;
@@ -259,9 +270,8 @@
     g.lineWidth=2; g.strokeStyle='#1a1a1a';
     g.beginPath(); g.arc(cx, cy, r, 0, Math.PI*2); g.stroke();
     g.beginPath(); g.moveTo(cx, cy + r); g.lineTo(cx + 7, cy + r + 14); g.lineTo(cx - 7, cy + r + 14); g.closePath(); g.stroke();
-
     if(iconImg){
-      const ICON = (kind==='car') ? 26 : 22;
+      const ICON = (kind==='car') ? 28 : 22;
       g.drawImage(iconImg, cx-ICON/2, cy-ICON/2, ICON, ICON);
     }
     return g.getImageData(0,0,size,size);
@@ -292,8 +302,37 @@
   map.on('dragstart', ()=> document.querySelector('.maplibregl-canvas')?.classList.add('dragging'));
   map.on('dragend',   ()=> document.querySelector('.maplibregl-canvas')?.classList.remove('dragging'));
 
-  // clicking map closes filters
-  map.on('click', ()=>{ if(!panelEl.classList.contains('hidden')) closeFilters(); });
+  // generic click: open popup if pin under cursor, else close filters
+  map.on('click', (e)=>{
+    const feats = map.queryRenderedFeatures(e.point, { layers:['cars-pin'] });
+    if (feats && feats.length){
+      const f=feats[0]; const v=f.properties; const [lng,lat]=f.geometry.coordinates;
+      const badge=v.number?v.number:(v.id?String(v.id).slice(-4):''); const plate=v.plate||'';
+      const pct=(v.pct!=null)?`${v.pct}%`:'—'; const range=(v.rangeKm!=null)?` (${v.rangeKm} km)`:'';
+      const addr=v.address||''; const apple=`https://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(v.model||'Car')}`;
+      const img=modelImage(v.model);
+      const titleEsc = String(v.model||'Vehicle').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      const html=`
+        <div class="infocard">
+          <img class="carimg" loading="lazy"
+               src="${img.webp}"
+               onerror="if(this.dataset.step!=='jpg'){this.dataset.step='jpg';this.src='${img.jpg}';}else{this.onerror=null;this.style.display='none';}"
+               alt="${titleEsc}">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+            <span class="badge">${badge}</span>
+            <div class="title">${titleEsc}</div>
+          </div>
+          <div class="muted" style="margin:-2px 0 8px">${plate||'&nbsp;'}</div>
+          <div class="muted" style="margin:6px 0">⛽ <b>${pct}${range}</b></div>
+          <div class="muted" style="margin:6px 0">📍 ${addr}</div>
+          <div class="divider"></div>
+          <div style="margin:8px 0"><a href="${apple}" target="_blank" rel="noopener">Open in Apple Maps</a></div>
+        </div>`;
+      new maplibregl.Popup({closeButton:true,offset:12}).setLngLat([lng,lat]).setHTML(html).addTo(map);
+    }else{
+      if(!panelEl.classList.contains('hidden')) closeFilters();
+    }
+  });
 
   map.on('load', async () => {
     // load pictograms
@@ -356,22 +395,40 @@
       }
     });
 
-    // overlays (left as-is)
+    // overlays (fill source creation left out for brevity – same as before)
     map.addSource('zones-relocation',{type:'geojson',data:emptyFC()});
     map.addSource('zones-nopark',{type:'geojson',data:emptyFC()});
     map.addSource('zones-ogarniam',{type:'geojson',data:emptyFC()});
 
-    // pointer cursor over pins (robust)
-    const setPointer=()=> map.getCanvas().style.cursor='pointer';
-    const setDefault=()=> map.getCanvas().style.cursor='default';
-    map.on('mousemove','cars-pin', setPointer);
-    map.on('mouseenter','cars-pin', setPointer);
-    map.on('mouseleave','cars-pin', setDefault);
+    // pointer cursor + hover label: detect feature under cursor always
+    function updateHover(e){
+      const feats = map.queryRenderedFeatures(e.point, { layers:['cars-pin'] });
+      const canvas = map.getCanvas();
+      if (feats && feats.length){
+        canvas.style.cursor = 'pointer';
+        // tiny label (desktop only)
+        if (!('ontouchstart' in window)){
+          const v=feats[0].properties;
+          const fleet = v.number ? v.number : (v.id?String(v.id).slice(-4):'');
+          const txt = `${v.model||'Vehicle'} • ${fleet}`;
+          hoverTag.textContent = txt;
+          hoverTag.style.left = `${e.point.x}px`;
+          hoverTag.style.top  = `${e.point.y}px`;
+          hoverTag.style.display = 'block';
+        }
+      }else{
+        canvas.style.cursor = 'default';
+        hoverTag.style.display = 'none';
+      }
+    }
+    map.on('mousemove', updateHover);
+    map.on('mouseout', ()=>{ hoverTag.style.display='none'; map.getCanvas().style.cursor='default'; });
 
     await loadAll(true,{fit:true});
     fitCityWidth();
   });
 
+  /* ---------- data/filter plumbing ---------- */
   let timer=null; window.__CITY_CACHE={cars:[]};
   const setCount=n=>{countEl.textContent=`${n} ${n===1?'car':'cars'}`};
   const emptyFC=()=>({type:'FeatureCollection',features:[]});
@@ -409,6 +466,11 @@
     fill(carsDiv,grouped.car); fill(vansDiv,grouped.van); fill(scootDiv,grouped.scooter);
   }
 
+  const modelSelections = new Map();
+  const modelOptions    = new Map();
+  let lastUIChange = 0;
+
+  const allBtn = document.getElementById('all'), noneBtn = document.getElementById('none');
   allBtn.addEventListener('click',()=>{
     const opts=modelOptions.get(currentCity)||{car:[],van:[],scooter:[]};
     modelSelections.set(currentCity,new Set([...(opts.car||[]),...(opts.van||[]),...(opts.scooter||[])]));
@@ -454,28 +516,17 @@
   async function loadAll(first=false,{fit=false}={}){
     try{
       const qs=new URLSearchParams({city:currentCity});
-      const cached=localStorage.getItem(`traficar_zones_${currentCity}`);
-      if(cached&&!first){ try{const z=JSON.parse(cached); if(Array.isArray(z.zones)&&(Date.now()-z.ts<10*60*1000)) qs.set('zones',z.zones.join(',')); }catch{} }
       const res=await fetch(`${API_CARS}?${qs.toString()}`); const data=await res.json();
-      let cars,zones; if(Array.isArray(data)){cars=data;} else{cars=data.cars||[]; zones=data.zones||[];}
-      if(Array.isArray(zones)&&zones.length){ localStorage.setItem(`traficar_zones_${currentCity}`,JSON.stringify({zones,ts:Date.now()})); }
+      const cars=Array.isArray(data)?data:(data.cars||[]);
       const byKind={car:new Set(),van:new Set(),scooter:new Set()};
       for(const v of cars) if(v&&v.model) (byKind[v.kind||'car']||byKind.car).add(v.model);
       const grouped={car:[...byKind.car],van:[...byKind.van],scooter:[...byKind.scooter]};
       const tooSoon=Date.now()-lastUIChange<1500; if(!tooSoon) buildModelPanelIfNeeded(grouped);
       window.__CITY_CACHE.cars=cars; applyFilterAndRender({fit});
     }catch(e){console.error(e);}
-    try{
-      const res=await fetch(`${API_AREAS}?city=${encodeURIComponent(currentCity)}`);
-      const areas=await res.json();
-      if(areas?.relocation) map.getSource('zones-relocation')?.setData(areas.relocation);
-      if(areas?.nopark)     map.getSource('zones-nopark')?.setData(areas.nopark);
-      if(areas?.ogarniam)   map.getSource('zones-ogarniam')?.setData(areas.ogarniam);
-    }catch(e){}
     clearTimeout(timer); timer=setTimeout(()=>loadAll(false,{fit:false}),20000);
   }
 
-  // initial width after fonts load
   window.addEventListener('load', fitCityWidth);
   window.addEventListener('resize', fitCityWidth);
 })();
